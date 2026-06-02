@@ -35,6 +35,7 @@ def init_db():
             p2_name         TEXT NOT NULL,
             p2_handicap     REAL NOT NULL,
             p2_tee          TEXT NOT NULL DEFAULT 'Blue',
+            pin             TEXT NOT NULL DEFAULT '0000',
             FOREIGN KEY (round_id) REFERENCES rounds(id)
         );
 
@@ -56,6 +57,7 @@ def init_db():
     for sql in [
         "ALTER TABLE teams ADD COLUMN p1_tee TEXT NOT NULL DEFAULT 'Blue'",
         "ALTER TABLE teams ADD COLUMN p2_tee TEXT NOT NULL DEFAULT 'Blue'",
+        "ALTER TABLE teams ADD COLUMN pin TEXT NOT NULL DEFAULT '0000'",
     ]:
         try:
             c.execute(sql)
@@ -108,18 +110,23 @@ def finalize_round(rid: str):
     conn.close()
 
 
-def add_team(round_id, team_name, p1_name, p1_hcp, p1_tee, p2_name, p2_hcp, p2_tee) -> int:
+def _make_pin() -> str:
+    return str(random.randint(1000, 9999))
+
+
+def add_team(round_id, team_name, p1_name, p1_hcp, p1_tee, p2_name, p2_hcp, p2_tee) -> tuple[int, str]:
+    pin = _make_pin()
     conn = get_conn()
     cur = conn.execute(
         """INSERT INTO teams
-           (round_id, team_name, p1_name, p1_handicap, p1_tee, p2_name, p2_handicap, p2_tee)
-           VALUES (?,?,?,?,?,?,?,?)""",
-        (round_id, team_name, p1_name, p1_hcp, p1_tee, p2_name, p2_hcp, p2_tee),
+           (round_id, team_name, p1_name, p1_handicap, p1_tee, p2_name, p2_handicap, p2_tee, pin)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (round_id, team_name, p1_name, p1_hcp, p1_tee, p2_name, p2_hcp, p2_tee, pin),
     )
     conn.commit()
     tid = cur.lastrowid
     conn.close()
-    return tid
+    return tid, pin
 
 
 def get_teams(round_id: str) -> list[dict]:
