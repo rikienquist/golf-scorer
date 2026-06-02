@@ -62,10 +62,120 @@ def init_db():
         try:
             c.execute(sql)
         except sqlite3.OperationalError:
-            pass  # column already exists
+            pass
+
+    # Wolf tables
+    c.executescript("""
+        CREATE TABLE IF NOT EXISTS wolf_players (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            round_id    TEXT NOT NULL,
+            wolf_order  INTEGER NOT NULL,
+            player_name TEXT NOT NULL,
+            handicap    REAL NOT NULL,
+            tee         TEXT NOT NULL DEFAULT 'Blue',
+            FOREIGN KEY (round_id) REFERENCES rounds(id)
+        );
+        CREATE TABLE IF NOT EXISTS wolf_scores (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            round_id    TEXT NOT NULL,
+            player_id   INTEGER NOT NULL,
+            hole        INTEGER NOT NULL,
+            gross       INTEGER,
+            updated_at  TEXT NOT NULL,
+            UNIQUE(round_id, player_id, hole),
+            FOREIGN KEY (player_id) REFERENCES wolf_players(id)
+        );
+        CREATE TABLE IF NOT EXISTS wolf_decisions (
+            round_id    TEXT NOT NULL,
+            hole        INTEGER NOT NULL,
+            decision    TEXT NOT NULL,
+            partner_id  INTEGER,
+            PRIMARY KEY (round_id, hole)
+        );
+    """)
 
     conn.commit()
     conn.close()
+
+
+# ── Wolf DB functions ─────────────────────────────────────────────────────────
+
+def add_wolf_player(round_id: str, wolf_order: int, player_name: str,
+                    handicap: float, tee: str) -> int:
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO wolf_players (round_id,wolf_order,player_name,handicap,tee) VALUES (?,?,?,?,?)",
+        (round_id, wolf_order, player_name, handicap, tee),
+    )
+    conn.commit(); tid = cur.lastrowid; conn.close()
+    return tid
+
+
+def get_wolf_players(round_id: str) -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM wolf_players WHERE round_id=? ORDER BY wolf_order", (round_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_wolf_players(round_id: str):
+    conn = get_conn()
+    for tbl in ("wolf_decisions", "wolf_scores", "wolf_players"):
+        conn.execute(f"DELETE FROM {tbl} WHERE round_id=?", (round_id,))
+    conn.commit(); conn.close()
+
+
+def upsert_wolf_score(round_id: str, player_id: int, hole: int, gross: Optional[int]):
+    conn = get_conn()
+    if gross is None:
+        conn.execute("DELETE FROM wolf_scores WHERE round_id=? AND player_id=? AND hole=?",
+                     (round_id, player_id, hole))
+    else:
+        conn.execute(
+            """INSERT INTO wolf_scores (round_id,player_id,hole,gross,updated_at)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(round_id,player_id,hole)
+               DO UPDATE SET gross=excluded.gross, updated_at=excluded.updated_at""",
+            (round_id, player_id, hole, gross, datetime.utcnow().isoformat()),
+        )
+    conn.commit(); conn.close()
+
+
+def get_wolf_scores(round_id: str) -> dict:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT player_id, hole, gross FROM wolf_scores WHERE round_id=?", (round_id,)
+    ).fetchall()
+    conn.close()
+    return {(r["player_id"], r["hole"]): r["gross"] for r in rows}
+
+
+def set_wolf_decision(round_id: str, hole: int, decision: str, partner_id: Optional[int] = None):
+    conn = get_conn()
+    conn.execute(
+        """INSERT INTO wolf_decisions (round_id,hole,decision,partner_id) VALUES (?,?,?,?)
+           ON CONFLICT(round_id,hole)
+           DO UPDATE SET decision=excluded.decision, partner_id=excluded.partner_id""",
+        (round_id, hole, decision, partner_id),
+    )
+    conn.commit(); conn.close()
+
+
+def clear_wolf_decision(round_id: str, hole: int):
+    conn = get_conn()
+    conn.execute("DELETE FROM wolf_decisions WHERE round_id=? AND hole=?", (round_id, hole))
+    conn.commit(); conn.close()
+
+
+def get_wolf_decisions(round_id: str) -> dict:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT hole, decision, partner_id FROM wolf_decisions WHERE round_id=?", (round_id,)
+    ).fetchall()
+    conn.close()
+    return {r["hole"]: {"decision": r["decision"], "partner_id": r["partner_id"]} for r in rows}
 
 
 def _make_round_id() -> str:
