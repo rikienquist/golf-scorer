@@ -110,23 +110,18 @@ def finalize_round(rid: str):
     conn.close()
 
 
-def _make_pin() -> str:
-    return str(random.randint(1000, 9999))
-
-
-def add_team(round_id, team_name, p1_name, p1_hcp, p1_tee, p2_name, p2_hcp, p2_tee) -> tuple[int, str]:
-    pin = _make_pin()
+def add_team(round_id, team_name, p1_name, p1_hcp, p1_tee, p2_name, p2_hcp, p2_tee) -> int:
     conn = get_conn()
     cur = conn.execute(
         """INSERT INTO teams
            (round_id, team_name, p1_name, p1_handicap, p1_tee, p2_name, p2_handicap, p2_tee, pin)
            VALUES (?,?,?,?,?,?,?,?,?)""",
-        (round_id, team_name, p1_name, p1_hcp, p1_tee, p2_name, p2_hcp, p2_tee, pin),
+        (round_id, team_name, p1_name, p1_hcp, p1_tee, p2_name, p2_hcp, p2_tee, team_name),
     )
     conn.commit()
     tid = cur.lastrowid
     conn.close()
-    return tid, pin
+    return tid
 
 
 def get_teams(round_id: str) -> list[dict]:
