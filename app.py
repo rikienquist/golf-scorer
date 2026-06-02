@@ -98,6 +98,12 @@ def _si_for_player(team: dict, player_num: int, course_data: dict, hole_idx: int
     return course_data[si_key][hole_idx]
 
 
+def _par_for_tee(course_data: dict, tee: str) -> list[int]:
+    """Return the 18-hole par list appropriate for this tee box."""
+    par_key = _tee_info(course_data, tee).get("par_key", "par")
+    return course_data.get(par_key, course_data["par"])
+
+
 def build_score_lookup(scores: list[dict]) -> dict:
     """(team_id, player_num, hole) -> gross"""
     return {(s["team_id"], s["player_num"], s["hole"]): s["gross"] for s in scores}
@@ -121,7 +127,6 @@ def hole_status(score_lookup: dict, team_id: int) -> list[str]:
 def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
     teams = get_teams(round_id)
     all_scores = get_scores(round_id)
-    pars = course_data["par"]
     lkp = build_score_lookup(all_scores)
 
     rows = []
@@ -129,6 +134,9 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
         tid = team["id"]
         hcp1 = _player_course_hcp(team, 1, course_data)
         hcp2 = _player_course_hcp(team, 2, course_data)
+
+        pars1 = _par_for_tee(course_data, team["p1_tee"])
+        pars2 = _par_for_tee(course_data, team["p2_tee"])
 
         total_net_bb = 0
         par_played   = 0
@@ -143,17 +151,17 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
                 continue
             thru = h
             holes_counted += 1
-            par_played += pars[h - 1]
-            nets = []
             si1 = _si_for_player(team, 1, course_data, h - 1)
             si2 = _si_for_player(team, 2, course_data, h - 1)
+            nets = []
             if g1 is not None:
-                nets.append(net_score(g1, hcp1, si1))
+                nets.append((net_score(g1, hcp1, si1), pars1[h - 1]))
             if g2 is not None:
-                nets.append(net_score(g2, hcp2, si2))
-            bb = min(nets)
-            total_net_bb += bb
-            if bb > pars[h - 1]:
+                nets.append((net_score(g2, hcp2, si2), pars2[h - 1]))
+            bb_net, bb_par = min(nets, key=lambda x: x[0])
+            total_net_bb += bb_net
+            par_played   += bb_par
+            if bb_net > bb_par:
                 shotguns += 1
 
         if holes_counted == 0:
@@ -190,7 +198,10 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
 
 def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
     """Build a horizontal scorecard HTML table with golf score symbols."""
-    pars = course_data["par"]
+    pars1 = _par_for_tee(course_data, team["p1_tee"])
+    pars2 = _par_for_tee(course_data, team["p2_tee"])
+    # Use p1's par for the header row (both are same except Woodside hole 4 edge case)
+    pars = pars1
     all_scores = get_scores(round_id)
     lkp = build_score_lookup(all_scores)
     tid = team["id"]
@@ -204,7 +215,8 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
     # Collect per-hole data
     holes_data = []  # list of dicts
     for h in range(1, 19):
-        par  = pars[h - 1]
+        par1 = pars1[h - 1]
+        par2 = pars2[h - 1]
         si1  = _si_for_player(team, 1, course_data, h - 1)
         si2  = _si_for_player(team, 2, course_data, h - 1)
         g1   = lkp.get((tid, 1, h))
@@ -212,12 +224,24 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
         n1   = net_score(g1, hcp1, si1) if g1 is not None else None
         n2   = net_score(g2, hcp2, si2) if g2 is not None else None
 
-        nets = [x for x in [n1, n2] if x is not None]
-        bb   = min(nets) if nets else None
-        vs   = (bb - par) if bb is not None else None
+        # Best net: pick lower net; use that player's par for vs-par
+        if n1 is not None and n2 is not None:
+            if n1 <= n2:
+                bb, bb_par = n1, par1
+            else:
+                bb, bb_par = n2, par2
+        elif n1 is not None:
+            bb, bb_par = n1, par1
+        elif n2 is not None:
+            bb, bb_par = n2, par2
+        else:
+            bb, bb_par = None, par1
 
+        vs = (bb - bb_par) if bb is not None else None
+        # Display par uses p1's par for the header row
         holes_data.append(dict(
-            par=par, g1=g1, n1=n1, g2=g2, n2=n2, bb=bb, vs=vs, si1=si1, si2=si2
+            par=par1, g1=g1, n1=n1, g2=g2, n2=n2, bb=bb, vs=vs, si1=si1, si2=si2,
+            par1=par1, par2=par2
         ))
 
     def subtotal(lst):
@@ -245,8 +269,8 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
     back  = holes_data[9:]
 
     # Par sums
-    par_out = sum(d["par"] for d in front)
-    par_in  = sum(d["par"] for d in back)
+    par_out = sum(d["par1"] for d in front)
+    par_in  = sum(d["par1"] for d in back)
     par_tot = par_out + par_in
 
     # Per-group value lists
@@ -257,7 +281,8 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
     bb_front = [d["bb"] for d in front];  bb_back = [d["bb"] for d in back]
     si1_front = [d["si1"] for d in front]; si1_back = [d["si1"] for d in back]
     si2_front = [d["si2"] for d in front]; si2_back = [d["si2"] for d in back]
-    pf = [d["par"] for d in front];        pb = [d["par"] for d in back]
+    pf  = [d["par1"] for d in front];  pb  = [d["par1"] for d in back]   # p1 par (header row)
+    pf2 = [d["par2"] for d in front];  pb2 = [d["par2"] for d in back]   # p2 par
 
     # Subtotals (only sum holes that have a value — fixes the -29 bug)
     g1_out = subtotal(g1_front); g1_in = subtotal(g1_back); g1_tot = subtotal([g1_out, g1_in])
@@ -346,11 +371,11 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
         <tr><td class="row-label">{p2} SI</td>{si_row(si2_front, si2_back)}</tr>
         <tr>
           <td class="row-label">{p2} Gross (hcp {hcp2})</td>
-          {score_row(g2_front, g2_back, g2_out, g2_in, g2_tot, pf, pb, with_symbols=True)}
+          {score_row(g2_front, g2_back, g2_out, g2_in, g2_tot, pf2, pb2, with_symbols=True)}
         </tr>
         <tr>
           <td class="row-label">{p2} Net</td>
-          {score_row(n2_front, n2_back, n2_out, n2_in, n2_tot, pf, pb, with_symbols=True)}
+          {score_row(n2_front, n2_back, n2_out, n2_in, n2_tot, pf2, pb2, with_symbols=True)}
         </tr>
         <tr style="background:#e8f4e8">
           <td class="row-label">Best Net</td>
@@ -455,7 +480,7 @@ elif page == "setup":
             hcp1 = _player_course_hcp(t, 1, course_data)
             hcp2 = _player_course_hcp(t, 2, course_data)
             st.markdown(
-                f"• **{t['team_name']}** (PIN: `{t['pin']}`): "
+                f"• **{t['team_name']}** (password = team name): "
                 f"{t['p1_name']} (idx {t['p1_handicap']}, {t['p1_tee']} tee, course hcp **{hcp1}**) & "
                 f"{t['p2_name']} (idx {t['p2_handicap']}, {t['p2_tee']} tee, course hcp **{hcp2}**)"
             )
@@ -495,9 +520,9 @@ elif page == "setup":
             else:
                 p1_name = PLAYERS[player_options.index(p1_sel)][0]
                 p2_name = PLAYERS[player_options.index(p2_sel)][0]
-                tid, pin = add_team(rid, team_name, p1_name, p1_idx, p1_tee, p2_name, p2_idx, p2_tee)
+                add_team(rid, team_name, p1_name, p1_idx, p1_tee, p2_name, p2_idx, p2_tee)
                 st.success(f"Team '{team_name}' added!")
-                st.warning(f"🔑 **Team PIN: {pin}** — write this down! You'll need it to enter scores.", icon="🔑")
+                st.info(f"🔑 Your team's password is your **team name**: `{team_name}`")
                 st.rerun()
 
     st.divider()
@@ -550,22 +575,22 @@ elif page == "score":
         team       = next(t for t in teams if t["team_name"] == sel_name)
         tid        = team["id"]
 
-        # ── PIN / admin gate ──────────────────────────────────────────────────
+        # ── Team name gate ────────────────────────────────────────────────────
         auth_key = f"auth_{rid}_{tid}"
         if not st.session_state.get(auth_key, False):
-            st.info(f"Enter your team PIN to edit scores for **{sel_name}**.")
+            st.info(f"Enter your **team name** to edit scores for **{sel_name}**.")
             pin_col, btn_col = st.columns([3, 1])
             with pin_col:
-                entered = st.text_input("PIN", max_chars=10, key=f"pin_input_{tid}",
-                                        placeholder="4-digit PIN or admin password")
+                entered = st.text_input("Team Name", max_chars=50, key=f"pin_input_{tid}",
+                                        placeholder="Your team name (case-insensitive)")
             with btn_col:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("Unlock", key=f"pin_btn_{tid}", type="primary"):
-                    if entered == team["pin"] or entered == ADMIN_PASSWORD:
+                    if entered.lower() == team["team_name"].lower() or entered == ADMIN_PASSWORD:
                         st.session_state[auth_key] = True
                         st.rerun()
                     else:
-                        st.error("Wrong PIN — ask whoever set up your team.")
+                        st.error("Team name didn't match — check spelling.")
             st.stop()
         # Authenticated — show a small unlock indicator
         st.caption(f"🔓 Editing scores for **{sel_name}**")
