@@ -112,7 +112,7 @@ def score_cell_html(gross, par, strokes: int = 0) -> str:
         dots = '•' * strokes
         # Wrap in a relative-positioned span so the dot sits in the top-right corner
         return (f'<span style="position:relative;display:inline-block">'
-                f'<span style="position:absolute;top:-3px;right:-4px;font-size:0.55rem;'
+                f'<span style="position:absolute;top:-4px;right:-5px;font-size:0.85rem;'
                 f'color:#111;line-height:1;font-weight:bold">{dots}</span>'
                 f'{inner}</span>')
     return inner
