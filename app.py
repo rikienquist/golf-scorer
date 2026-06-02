@@ -131,6 +131,7 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
         hcp2 = _player_course_hcp(team, 2, course_data)
 
         total_net_bb = 0
+        par_played   = 0
         holes_counted = 0
         thru = 0
 
@@ -141,6 +142,7 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
                 continue
             thru = h
             holes_counted += 1
+            par_played += pars[h - 1]   # only add par for holes actually played
             nets = []
             si1 = _si_for_player(team, 1, course_data, h - 1)
             si2 = _si_for_player(team, 2, course_data, h - 1)
@@ -155,8 +157,7 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
             total_str  = "—"
             sort_key   = 9999
         else:
-            par_thru = sum(pars[:thru])
-            diff = total_net_bb - par_thru
+            diff = total_net_bb - par_played
             vs_par_str = f"+{diff}" if diff > 0 else ("E" if diff == 0 else str(diff))
             total_str  = str(total_net_bb)
             sort_key   = diff
@@ -220,31 +221,20 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
 
     def vs_cell(val):
         if val is None:
-            return '<td>—</td>'
+            return '<td style="color:#aaa">—</td>'
         txt = f"+{val}" if val > 0 else ("E" if val == 0 else str(val))
         cls = "vspar-pos" if val > 0 else ("vspar-neg" if val < 0 else "vspar-e")
         return f'<td class="{cls}">{txt}</td>'
 
-    def net_cell(val):
+    def scored_cell(val, par):
+        """Cell with golf symbols — works for gross AND net scores."""
+        if val is None:
+            return '<td style="color:#aaa">—</td>'
+        return f'<td>{score_cell_html(val, par)}</td>'
+
+    def plain_cell(val):
         return f'<td>{val}</td>' if val is not None else '<td style="color:#aaa">—</td>'
 
-    # Build column groups: front 9 (idx 0-8), subtotal OUT, back 9 (idx 9-17), subtotal IN, total TOT
-    def row_cells(values_front, out_val, values_back, in_val, tot_val, is_gross=False, pars_front=None, pars_back=None):
-        cells = ""
-        for i, v in enumerate(values_front):
-            if is_gross and pars_front:
-                cells += f'<td>{score_cell_html(v, pars_front[i])}</td>'
-            else:
-                cells += net_cell(v)
-        cells += f'<td class="subtotal">{out_val if out_val is not None else "—"}</td>'
-        for i, v in enumerate(values_back):
-            if is_gross and pars_back:
-                cells += f'<td>{score_cell_html(v, pars_back[i])}</td>'
-            else:
-                cells += net_cell(v)
-        cells += f'<td class="subtotal">{in_val if in_val is not None else "—"}</td>'
-        cells += f'<td class="subtotal">{tot_val if tot_val is not None else "—"}</td>'
-        return cells
 
     front = holes_data[:9]
     back  = holes_data[9:]
@@ -254,66 +244,67 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
     par_in  = sum(d["par"] for d in back)
     par_tot = par_out + par_in
 
-    # Player 1 gross
-    g1_front = [d["g1"] for d in front]; g1_back = [d["g1"] for d in back]
-    g1_out = subtotal(g1_front); g1_in = subtotal(g1_back)
-    g1_tot = subtotal([g1_out, g1_in])
-
-    # Player 1 net
-    n1_front = [d["n1"] for d in front]; n1_back = [d["n1"] for d in back]
-    n1_out = subtotal(n1_front); n1_in = subtotal(n1_back); n1_tot = subtotal([n1_out, n1_in])
-
-    # Player 2 gross
-    g2_front = [d["g2"] for d in front]; g2_back = [d["g2"] for d in back]
-    g2_out = subtotal(g2_front); g2_in = subtotal(g2_back); g2_tot = subtotal([g2_out, g2_in])
-
-    # Player 2 net
-    n2_front = [d["n2"] for d in front]; n2_back = [d["n2"] for d in back]
-    n2_out = subtotal(n2_front); n2_in = subtotal(n2_back); n2_tot = subtotal([n2_out, n2_in])
-
-    # Best net
-    bb_front = [d["bb"] for d in front]; bb_back = [d["bb"] for d in back]
-    bb_out = subtotal(bb_front); bb_in = subtotal(bb_back); bb_tot = subtotal([bb_out, bb_in])
-
-    # vs par (cumulative for subtotals)
-    vs_out = (bb_out - par_out) if bb_out is not None else None
-    vs_in  = (bb_in  - par_in)  if bb_in  is not None else None
-    vs_tot = (bb_tot - par_tot) if bb_tot is not None else None
-
-    # SI rows
+    # Per-group value lists
+    g1_front = [d["g1"] for d in front];  g1_back = [d["g1"] for d in back]
+    n1_front = [d["n1"] for d in front];  n1_back = [d["n1"] for d in back]
+    g2_front = [d["g2"] for d in front];  g2_back = [d["g2"] for d in back]
+    n2_front = [d["n2"] for d in front];  n2_back = [d["n2"] for d in back]
+    bb_front = [d["bb"] for d in front];  bb_back = [d["bb"] for d in back]
     si1_front = [d["si1"] for d in front]; si1_back = [d["si1"] for d in back]
     si2_front = [d["si2"] for d in front]; si2_back = [d["si2"] for d in back]
+    pf = [d["par"] for d in front];        pb = [d["par"] for d in back]
 
-    # Header row
-    hole_headers = "".join(f'<th>{i}</th>' for i in range(1, 10))
-    hole_headers += '<th>OUT</th>'
-    hole_headers += "".join(f'<th>{i}</th>' for i in range(10, 19))
-    hole_headers += '<th>IN</th><th>TOT</th>'
+    # Subtotals (only sum holes that have a value — fixes the -29 bug)
+    g1_out = subtotal(g1_front); g1_in = subtotal(g1_back); g1_tot = subtotal([g1_out, g1_in])
+    n1_out = subtotal(n1_front); n1_in = subtotal(n1_back); n1_tot = subtotal([n1_out, n1_in])
+    g2_out = subtotal(g2_front); g2_in = subtotal(g2_back); g2_tot = subtotal([g2_out, g2_in])
+    n2_out = subtotal(n2_front); n2_in = subtotal(n2_back); n2_tot = subtotal([n2_out, n2_in])
+    bb_out = subtotal(bb_front); bb_in = subtotal(bb_back); bb_tot = subtotal([bb_out, bb_in])
 
-    par_cells = "".join(f'<td>{d["par"]}</td>' for d in front)
-    par_cells += f'<td class="subtotal">{par_out}</td>'
-    par_cells += "".join(f'<td>{d["par"]}</td>' for d in back)
-    par_cells += f'<td class="subtotal">{par_in}</td><td class="subtotal">{par_tot}</td>'
+    # vs Par subtotals: sum only the per-hole vs-par values (not total_bb - total_par)
+    # This way skipped holes don't drag the number down
+    vs_out_val = subtotal([d["vs"] for d in front]) if any(d["vs"] is not None for d in front) else None
+    vs_in_val  = subtotal([d["vs"] for d in back])  if any(d["vs"] is not None for d in back)  else None
+    vs_tot_val = subtotal([v for v in [vs_out_val, vs_in_val] if v is not None]) if (vs_out_val is not None or vs_in_val is not None) else None
 
-    si1_cells = "".join(f'<td style="color:#888;font-size:0.75rem">{s}</td>' for s in si1_front)
-    si1_cells += '<td class="subtotal">—</td>'
-    si1_cells += "".join(f'<td style="color:#888;font-size:0.75rem">{s}</td>' for s in si1_back)
-    si1_cells += '<td class="subtotal">—</td><td class="subtotal">—</td>'
+    # ── Build HTML ────────────────────────────────────────────────────────────
 
-    si2_cells = "".join(f'<td style="color:#888;font-size:0.75rem">{s}</td>' for s in si2_front)
-    si2_cells += '<td class="subtotal">—</td>'
-    si2_cells += "".join(f'<td style="color:#888;font-size:0.75rem">{s}</td>' for s in si2_back)
-    si2_cells += '<td class="subtotal">—</td><td class="subtotal">—</td>'
+    def si_row(si_vals_front, si_vals_back):
+        cells = "".join(f'<td style="color:#888;font-size:0.75rem">{s}</td>' for s in si_vals_front)
+        cells += '<td class="subtotal">—</td>'
+        cells += "".join(f'<td style="color:#888;font-size:0.75rem">{s}</td>' for s in si_vals_back)
+        return cells + '<td class="subtotal">—</td><td class="subtotal">—</td>'
 
-    # Best net vs par per hole cells
-    vs_cells = ""
-    for d in front:
-        vs_cells += vs_cell(d["vs"])
-    vs_cells += vs_cell(vs_out)
-    for d in back:
-        vs_cells += vs_cell(d["vs"])
-    vs_cells += vs_cell(vs_in)
-    vs_cells += vs_cell(vs_tot)
+    def score_row(vals_f, vals_b, out, inp, tot, pars_f, pars_b, with_symbols=False):
+        """Render a data row; with_symbols adds golf circles/squares."""
+        cells = ""
+        for v, p in zip(vals_f, pars_f):
+            cells += scored_cell(v, p) if with_symbols else plain_cell(v)
+        cells += f'<td class="subtotal">{out if out is not None else "—"}</td>'
+        for v, p in zip(vals_b, pars_b):
+            cells += scored_cell(v, p) if with_symbols else plain_cell(v)
+        cells += f'<td class="subtotal">{inp if inp is not None else "—"}</td>'
+        cells += f'<td class="subtotal">{tot if tot is not None else "—"}</td>'
+        return cells
+
+    def vs_row(holes_f, holes_b, vs_out, vs_in, vs_tot):
+        cells = "".join(vs_cell(d["vs"]) for d in holes_f)
+        cells += vs_cell(vs_out)
+        cells += "".join(vs_cell(d["vs"]) for d in holes_b)
+        cells += vs_cell(vs_in)
+        cells += vs_cell(vs_tot)
+        return cells
+
+    hole_headers = (
+        "".join(f'<th>{i}</th>' for i in range(1, 10)) + '<th>OUT</th>' +
+        "".join(f'<th>{i}</th>' for i in range(10, 19)) + '<th>IN</th><th>TOT</th>'
+    )
+    par_cells = (
+        "".join(f'<td>{d["par"]}</td>' for d in front) +
+        f'<td class="subtotal">{par_out}</td>' +
+        "".join(f'<td>{d["par"]}</td>' for d in back) +
+        f'<td class="subtotal">{par_in}</td><td class="subtotal">{par_tot}</td>'
+    )
 
     html = f"""
     <div style="overflow-x:auto">
@@ -322,41 +313,32 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
         <tr><th class="row-label">Hole</th>{hole_headers}</tr>
       </thead>
       <tbody>
-        <tr>
-          <td class="row-label">Par</td>{par_cells}
-        </tr>
-        <tr>
-          <td class="row-label">{p1} SI</td>{si1_cells}
-        </tr>
+        <tr><td class="row-label">Par</td>{par_cells}</tr>
+        <tr><td class="row-label">{p1} SI</td>{si_row(si1_front, si1_back)}</tr>
         <tr>
           <td class="row-label">{p1} Gross (hcp {hcp1})</td>
-          {row_cells(g1_front, g1_out, g1_back, g1_in, g1_tot, is_gross=True,
-                     pars_front=[d["par"] for d in front],
-                     pars_back=[d["par"] for d in back])}
+          {score_row(g1_front, g1_back, g1_out, g1_in, g1_tot, pf, pb, with_symbols=True)}
         </tr>
         <tr>
           <td class="row-label">{p1} Net</td>
-          {row_cells(n1_front, n1_out, n1_back, n1_in, n1_tot)}
+          {score_row(n1_front, n1_back, n1_out, n1_in, n1_tot, pf, pb, with_symbols=True)}
         </tr>
-        <tr>
-          <td class="row-label">{p2} SI</td>{si2_cells}
-        </tr>
+        <tr><td class="row-label">{p2} SI</td>{si_row(si2_front, si2_back)}</tr>
         <tr>
           <td class="row-label">{p2} Gross (hcp {hcp2})</td>
-          {row_cells(g2_front, g2_out, g2_back, g2_in, g2_tot, is_gross=True,
-                     pars_front=[d["par"] for d in front],
-                     pars_back=[d["par"] for d in back])}
+          {score_row(g2_front, g2_back, g2_out, g2_in, g2_tot, pf, pb, with_symbols=True)}
         </tr>
         <tr>
           <td class="row-label">{p2} Net</td>
-          {row_cells(n2_front, n2_out, n2_back, n2_in, n2_tot)}
+          {score_row(n2_front, n2_back, n2_out, n2_in, n2_tot, pf, pb, with_symbols=True)}
         </tr>
         <tr style="background:#e8f4e8">
           <td class="row-label">Best Net</td>
-          {row_cells(bb_front, bb_out, bb_back, bb_in, bb_tot)}
+          {score_row(bb_front, bb_back, bb_out, bb_in, bb_tot, pf, pb, with_symbols=True)}
         </tr>
         <tr>
-          <td class="row-label">vs Par</td>{vs_cells}
+          <td class="row-label">vs Par</td>
+          {vs_row(front, back, vs_out_val, vs_in_val, vs_tot_val)}
         </tr>
       </tbody>
     </table>
