@@ -178,7 +178,7 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
             "Pos":      "",
             "Team":     team["team_name"],
             "Players":  f"{team['p1_name']} / {team['p2_name']}",
-            "Thru":     thru if holes_counted > 0 else "—",
+            "Thru":     holes_counted if holes_counted > 0 else "—",
             "Net Tot":  total_str,
             "vs Par":   vs_par_str,
             "🍺 Shotguns": shotguns if holes_counted > 0 else "—",
@@ -611,9 +611,6 @@ elif page == "score":
                             st.error("Team name didn't match — check spelling.")
             else:
                 st.caption(f"🔓 Editing scores for **{sel_name}**")
-                # Show shotgun message if it was triggered on the previous save
-                if st.session_state.pop(f"shotgun_{rid}_{tid}", False):
-                    st.error("🍺🍺🍺  SHOTGUN TIME — YOU SUCK  🍺🍺🍺")
 
                 hcp1 = _player_course_hcp(team, 1, course_data)
                 hcp2 = _player_course_hcp(team, 2, course_data)
@@ -644,6 +641,10 @@ elif page == "score":
                     st.warning(f"⚠️ Hole {h} — only one score recorded")
                 else:
                     st.info(f"⬜ Hole {h} — no scores yet")
+
+                # Shotgun popup — shown right after the status badge for visibility
+                if st.session_state.pop(f"shotgun_{rid}_{tid}", False):
+                    st.error("🍺🍺🍺  SHOTGUN TIME — YOU SUCK  🍺🍺🍺")
 
                 par   = pars[h - 1]
                 si1   = _si_for_player(team, 1, course_data, h - 1)
