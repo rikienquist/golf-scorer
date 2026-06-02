@@ -460,7 +460,8 @@ def build_wolf_leaderboard_html(standings: list) -> str:
 
 
 def build_wolf_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
-                               hole_pts: dict, cum16: dict, course_data: dict) -> str:
+                               hole_pts: dict, cum16: dict, course_data: dict,
+                               hole_carry: dict | None = None) -> str:
     """Full horizontal scorecard for wolf — all 4 players."""
     pars   = course_data["par"]
     all_ids = [p["id"] for p in players]
@@ -491,15 +492,18 @@ def build_wolf_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
         labels = {"blind_lone": "BL", "lone": "LW", "partner": "P"}
         cells = ""
         for h in range(1, 19):
-            dec = decisions.get(h, {})
-            d   = dec.get("decision")
+            dec   = decisions.get(h, {})
+            d     = dec.get("decision")
+            carry = (hole_carry or {}).get(h, 1)
             if d == "partner":
-                pid = dec.get("partner_id")
+                pid   = dec.get("partner_id")
                 pname = next((p["player_name"][:2] for p in players if p["id"] == pid), "?")
-                txt = f'P+{pname}'
+                txt   = f'P+{pname}'
             else:
                 txt = labels.get(d, "—")
-            cells += f'<td style="font-size:0.7rem;color:#555">{txt}</td>'
+            carry_badge = (f'<span style="color:#e07000;font-size:0.6rem;font-weight:bold">×{carry}</span> '
+                           if carry > 1 else "")
+            cells += f'<td style="font-size:0.7rem;color:#555">{carry_badge}{txt}</td>'
             if h == 9:
                 cells += '<td class="subtotal"></td>'
         return cells + '<td class="subtotal"></td><td class="subtotal"></td>'
@@ -665,11 +669,11 @@ if page == "home":
                         wd = get_wolf_decisions(r["id"])
                         if wp:
                             st.subheader("🏆 Final Leaderboard")
-                            wstand, wpts, wcum16 = compute_standings(wp, ws, wd, cd)
+                            wstand, wpts, wcum16, wcarry = compute_standings(wp, ws, wd, cd)
                             st.markdown(build_wolf_leaderboard_html(wstand), unsafe_allow_html=True)
                             st.divider()
                             st.subheader("📋 Scorecard")
-                            st.markdown(build_wolf_scorecard_html(wp, ws, wd, wpts, wcum16, cd),
+                            st.markdown(build_wolf_scorecard_html(wp, ws, wd, wpts, wcum16, cd, wcarry),
                                         unsafe_allow_html=True)
                         else:
                             st.write("No players recorded.")
@@ -863,7 +867,7 @@ elif page == "score":
         player_map    = {p["id"]: p for p in wolf_players}
 
         # Compute standings (needed for wolf 17/18 and leaderboard)
-        standings, hole_pts, cum16 = compute_standings(
+        standings, hole_pts, cum16, hole_carry = compute_standings(
             wolf_players, wolf_scores, wolf_dec, course_data
         )
 
@@ -1008,28 +1012,37 @@ elif page == "score":
                                 st.caption("—")
 
                     # Preview result
+                    current_carry = hole_carry.get(h, 1)
+                    if current_carry > 1:
+                        st.warning(f"🔥 **Carry ×{current_carry}** — this hole's points are multiplied!")
+
                     if decision:
                         net_scores_now = {}
+                        hole_pars_now  = {}
                         for p in wolf_players:
-                            g = gross_vals.get(p["id"])
-                            if g is not None:
-                                ti = _tee_info(course_data, p["tee"])
-                                si = course_data[ti["si_key"]][h - 1]
-                                net_scores_now[p["id"]] = net_score(g, course_hcps[p["id"]], si)
-                            else:
-                                net_scores_now[p["id"]] = None
-                        pts_preview, result = compute_hole_points(
-                            decision, wolf_p["id"], partner_id, net_scores_now, all_ids
+                            g  = gross_vals.get(p["id"])
+                            ti = _tee_info(course_data, p["tee"])
+                            si = course_data[ti["si_key"]][h - 1]
+                            pk = ti.get("par_key", "par")
+                            hole_pars_now[p["id"]] = course_data.get(pk, course_data["par"])[h - 1]
+                            net_scores_now[p["id"]] = net_score(g, course_hcps[p["id"]], si) if g is not None else None
+
+                        pts_preview, result, _ = compute_hole_points(
+                            decision, wolf_p["id"], partner_id,
+                            net_scores_now, gross_vals, hole_pars_now, all_ids, current_carry
                         )
                         label = RESULT_LABELS.get(result, result)
+                        winners = ", ".join(
+                            f"{player_map[pid]['player_name']} **+{pts}**"
+                            for pid, pts in pts_preview.items() if pts > 0
+                        )
                         if result == "wolf_wins":
-                            st.success(f"Preview: {label} — "
-                                       + ", ".join(f"{player_map[pid]['player_name']} +{pts}" for pid, pts in pts_preview.items() if pts > 0))
+                            st.success(f"Preview: {label} — {winners}")
                         elif result == "others_win":
-                            st.warning(f"Preview: {label} — "
-                                       + ", ".join(f"{player_map[pid]['player_name']} +{pts}" for pid, pts in pts_preview.items() if pts > 0))
+                            st.warning(f"Preview: {label} — {winners}")
                         elif result == "push":
-                            st.info(f"Preview: {label}")
+                            next_carry = current_carry * 2
+                            st.info(f"Preview: {label} — next hole carries at **×{next_carry}**")
 
                     if st.button("💾 Save Hole", type="primary", key=f"save_wolf_{h}"):
                         for p in wolf_players:
@@ -1039,7 +1052,7 @@ elif page == "score":
 
         with tab_board:
             st.subheader("🏆 Wolf Leaderboard")
-            standings, hole_pts, cum16 = compute_standings(
+            standings, hole_pts, cum16, hole_carry = compute_standings(
                 wolf_players, wolf_scores, wolf_dec, course_data
             )
             st.markdown(build_wolf_leaderboard_html(standings), unsafe_allow_html=True)
@@ -1049,12 +1062,12 @@ elif page == "score":
         with tab_card:
             st.subheader("📋 Wolf Scorecard")
             st.caption("🐺 = wolf this hole · • = handicap stroke · 🟡 = points earned")
-            standings2, hole_pts2, cum16_2 = compute_standings(
+            standings2, hole_pts2, cum16_2, hole_carry2 = compute_standings(
                 wolf_players, wolf_scores, wolf_dec, course_data
             )
             st.markdown(
                 build_wolf_scorecard_html(wolf_players, wolf_scores, wolf_dec,
-                                          hole_pts2, cum16_2, course_data),
+                                          hole_pts2, cum16_2, course_data, hole_carry2),
                 unsafe_allow_html=True
             )
 
