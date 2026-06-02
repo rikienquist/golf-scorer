@@ -89,7 +89,7 @@ def compute_hole_points(
                 points[pid] = base_lose * carry_mult * sm
             return points, "others_win", 1
         else:
-            return points, "push", carry_mult * 2
+            return points, "push", 2  # carry is always ×2 max, regardless of consecutive pushes
 
     elif decision == "partner" and partner_id is not None:
         wolf_team  = {pid for pid in (wolf_id, partner_id) if pid in scored}
@@ -111,7 +111,7 @@ def compute_hole_points(
                 points[pid] = 3 * carry_mult * sm
             return points, "others_win", 1
         else:
-            return points, "push", carry_mult * 2
+            return points, "push", 2  # carry is always ×2 max, regardless of consecutive pushes
 
     return points, "incomplete", carry_mult
 
