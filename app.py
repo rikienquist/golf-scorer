@@ -611,6 +611,9 @@ elif page == "score":
                             st.error("Team name didn't match — check spelling.")
             else:
                 st.caption(f"🔓 Editing scores for **{sel_name}**")
+                # Show shotgun message if it was triggered on the previous save
+                if st.session_state.pop(f"shotgun_{rid}_{tid}", False):
+                    st.error("🍺🍺🍺  SHOTGUN TIME — YOU SUCK  🍺🍺🍺")
 
                 hcp1 = _player_course_hcp(team, 1, course_data)
                 hcp2 = _player_course_hcp(team, 2, course_data)
@@ -715,9 +718,7 @@ elif page == "score":
                     upsert_score(rid, tid, 1, h, g1)
                     upsert_score(rid, tid, 2, h, g2)
                     if nets and min(nets) > par:
-                        st.error("🍺🍺🍺 **SHOTGUN TIME — YOU SUCK** 🍺🍺🍺")
-                    else:
-                        st.success(f"Hole {h} saved!")
+                        st.session_state[f"shotgun_{rid}_{tid}"] = True
                     st.rerun()
 
     # ── Leaderboard ───────────────────────────────────────────────────────────
