@@ -9,7 +9,11 @@ from database import (
     init_db, create_round, round_exists, get_round, finalize_round,
     add_team, get_teams, upsert_score, get_scores,
     list_active_rounds, list_completed_rounds,
+    add_wolf_player, get_wolf_players, delete_wolf_players,
+    upsert_wolf_score, get_wolf_scores,
+    set_wolf_decision, clear_wolf_decision, get_wolf_decisions,
 )
+from wolf import wolf_for_hole, compute_hole_points, compute_standings, RESULT_LABELS
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -404,6 +408,205 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
     return html
 
 
+# ── Wolf helpers ─────────────────────────────────────────────────────────────
+
+def _wolf_course_hcp(player: dict, course_data: dict) -> int:
+    ti = _tee_info(course_data, player["tee"])
+    par = sum(course_data["par"])
+    return course_handicap(player["handicap"], ti["slope"], ti["rating"], par)
+
+
+def wolf_gross_cell(gross, par, strokes: int, is_wolf: bool) -> str:
+    """Gross cell with optional 🐺 top-left and handicap dots top-right."""
+    if gross is None:
+        content = '<span style="color:#aaa">—</span>'
+    else:
+        content = score_cell_html(gross, par, strokes)
+
+    wolf_badge = (
+        '<span style="position:absolute;top:0;left:1px;font-size:0.7rem;line-height:1">🐺</span>'
+        if is_wolf else ""
+    )
+    return (f'<td style="position:relative;text-align:center">'
+            f'<div style="position:relative;display:inline-block">'
+            f'{wolf_badge}{content}</div></td>')
+
+
+def build_wolf_leaderboard_html(standings: list) -> str:
+    if not standings:
+        return "<p>No scores yet.</p>"
+    rows_html = ""
+    for pos, s in enumerate(standings, 1):
+        vs = s["vs_par"]
+        vs_str = (f'+{vs}' if vs and vs > 0 else ('E' if vs == 0 else str(vs))) if vs is not None else '—'
+        rows_html += (
+            f'<tr>'
+            f'<td>{pos}</td>'
+            f'<td style="text-align:left"><b>{s["name"]}</b></td>'
+            f'<td>{s["points"]}</td>'
+            f'<td>{s["gross"] if s["gross"] is not None else "—"}</td>'
+            f'<td>{s["net"]   if s["net"]   is not None else "—"}</td>'
+            f'<td class="{"vspar-pos" if vs and vs > 0 else ("vspar-neg" if vs and vs < 0 else "vspar-e")}">{vs_str}</td>'
+            f'<td>{s["holes"]}</td>'
+            f'</tr>'
+        )
+    return (
+        '<div style="overflow-x:auto">'
+        '<table class="lb-table">'
+        '<thead><tr><th>Pos</th><th>Player</th><th>Pts</th>'
+        '<th>Gross</th><th>Net</th><th>vs Par</th><th>Thru</th></tr></thead>'
+        f'<tbody>{rows_html}</tbody></table></div>'
+    )
+
+
+def build_wolf_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
+                               hole_pts: dict, cum16: dict, course_data: dict) -> str:
+    """Full horizontal scorecard for wolf — all 4 players."""
+    pars   = course_data["par"]
+    all_ids = [p["id"] for p in players]
+    par_total = sum(pars)
+
+    # Course handicaps
+    course_hcps = {p["id"]: _wolf_course_hcp(p, course_data) for p in players}
+
+    # Determine wolf per hole
+    wolf_ids = {}
+    for h in range(1, 19):
+        wolf_ids[h] = wolf_for_hole(players, h, cum16 if h > 16 else None)["id"]
+
+    # Header
+    def header_cells():
+        cells = "".join(f'<th>{i}</th>' for i in range(1, 10))
+        cells += '<th>OUT</th>'
+        cells += "".join(f'<th>{i}</th>' for i in range(10, 19))
+        return cells + '<th>IN</th><th>TOT</th>'
+
+    def par_cells():
+        cells = "".join(f'<td>{pars[i]}</td>' for i in range(9))
+        cells += f'<td class="subtotal">{sum(pars[:9])}</td>'
+        cells += "".join(f'<td>{pars[i]}</td>' for i in range(9, 18))
+        return cells + f'<td class="subtotal">{sum(pars[9:])}</td><td class="subtotal">{par_total}</td>'
+
+    def decision_row():
+        labels = {"blind_lone": "BL", "lone": "LW", "partner": "P"}
+        cells = ""
+        for h in range(1, 19):
+            dec = decisions.get(h, {})
+            d   = dec.get("decision")
+            if d == "partner":
+                pid = dec.get("partner_id")
+                pname = next((p["player_name"][:2] for p in players if p["id"] == pid), "?")
+                txt = f'P+{pname}'
+            else:
+                txt = labels.get(d, "—")
+            cells += f'<td style="font-size:0.7rem;color:#555">{txt}</td>'
+            if h == 9:
+                cells += '<td class="subtotal"></td>'
+        return cells + '<td class="subtotal"></td><td class="subtotal"></td>'
+
+    def result_row():
+        cells = ""
+        for h in range(1, 19):
+            dec = decisions.get(h, {})
+            d   = dec.get("decision")
+            partner_id = dec.get("partner_id")
+            net_scores_h = {}
+            for p in players:
+                g = scores_lkp.get((p["id"], h))
+                if g is not None:
+                    ti = course_data["tees"].get(p["tee"], list(course_data["tees"].values())[0])
+                    si = course_data[ti["si_key"]][h - 1]
+                    net_scores_h[p["id"]] = net_score(g, course_hcps[p["id"]], si)
+            if d:
+                _, result = compute_hole_points(d, wolf_ids[h], partner_id, net_scores_h, all_ids)
+                icons = {"wolf_wins": "🐺", "others_win": "💪", "push": "🤝", "incomplete": ""}
+                txt = icons.get(result, "")
+            else:
+                txt = ""
+            cells += f'<td style="font-size:0.9rem">{txt}</td>'
+            if h == 9:
+                cells += '<td class="subtotal"></td>'
+        return cells + '<td class="subtotal"></td><td class="subtotal"></td>'
+
+    # Player rows
+    player_rows_html = ""
+    for p in players:
+        pid  = p["id"]
+        ti   = course_data["tees"].get(p["tee"], list(course_data["tees"].values())[0])
+        si_key  = ti["si_key"]
+        par_key = ti.get("par_key", "par")
+        tee_pars = course_data.get(par_key, pars)
+        hcp = course_hcps[pid]
+
+        gross_cells = ""
+        net_cells   = ""
+        pts_cells   = ""
+        g_out = n_out = pts_out = 0
+        g_in  = n_in  = pts_in  = 0
+        g_tot = n_tot = pts_tot = 0
+
+        for h in range(1, 19):
+            gross = scores_lkp.get((pid, h))
+            par_h = tee_pars[h - 1]
+            si    = course_data[si_key][h - 1]
+            stk   = strokes_on_hole(hcp, si)
+            is_wolf_h = (wolf_ids[h] == pid)
+            ns = net_score(gross, hcp, si) if gross is not None else None
+            pts_h = hole_pts.get(h, {}).get(pid, 0)
+
+            gross_cells += wolf_gross_cell(gross, par_h, stk, is_wolf_h)
+            net_cells   += f'<td>{score_cell_html(ns, par_h) if ns is not None else "<span style=color:#aaa>—</span>"}</td>'
+            pts_cells   += f'<td style="font-weight:bold;color:#1a7a3c">{pts_h if pts_h else ""}</td>'
+
+            if h == 9:
+                gross_cells += f'<td class="subtotal">{g_out if g_out else "—"}</td>'
+                net_cells   += f'<td class="subtotal">{n_out if n_out else "—"}</td>'
+                pts_cells   += f'<td class="subtotal">{pts_out if pts_out else ""}</td>'
+            if h <= 9:
+                if gross: g_out += gross
+                if ns:    n_out += ns
+                pts_out += pts_h
+            else:
+                if gross: g_in += gross
+                if ns:    n_in  += ns
+                pts_in  += pts_h
+
+        g_tot   = (g_out + g_in) or None
+        n_tot   = (n_out + n_in) or None
+        pts_tot = pts_out + pts_in
+
+        gross_cells += (f'<td class="subtotal">{g_in or "—"}</td>'
+                        f'<td class="subtotal">{g_tot or "—"}</td>')
+        net_cells   += (f'<td class="subtotal">{n_in or "—"}</td>'
+                        f'<td class="subtotal">{n_tot or "—"}</td>')
+        pts_cells   += (f'<td class="subtotal">{pts_in or ""}</td>'
+                        f'<td class="subtotal" style="font-size:1rem;font-weight:bold">{pts_tot or ""}</td>')
+
+        tee_color = ti["color"]
+        name_label = (f'{p["player_name"]} '
+                      f'<span style="background:{tee_color};color:white;border-radius:3px;'
+                      f'padding:0 4px;font-size:0.7rem">{p["tee"]}</span> '
+                      f'<span style="font-size:0.7rem;color:#666">hcp {hcp}</span>')
+
+        player_rows_html += (
+            f'<tr><td class="row-label">{name_label} Gross</td>{gross_cells}</tr>'
+            f'<tr><td class="row-label">{p["player_name"]} Net</td>{net_cells}</tr>'
+            f'<tr style="background:#fffbe6"><td class="row-label">{p["player_name"]} Pts</td>{pts_cells}</tr>'
+        )
+
+    return (
+        '<div style="overflow-x:auto">'
+        '<table class="sc-table">'
+        f'<thead><tr><th class="row-label">Hole</th>{header_cells()}</tr></thead>'
+        '<tbody>'
+        f'<tr><td class="row-label">Par</td>{par_cells()}</tr>'
+        f'<tr><td class="row-label">Decision</td>{decision_row()}</tr>'
+        f'<tr><td class="row-label">Result</td>{result_row()}</tr>'
+        f'{player_rows_html}'
+        '</tbody></table></div>'
+    )
+
+
 # ── Routing ───────────────────────────────────────────────────────────────────
 params = st.query_params
 if "round" in params and "page" not in params:
@@ -455,23 +658,39 @@ if page == "home":
                 with st.expander(label):
                     cd = COURSES[r["course"]]
                     lb = compute_leaderboard(r["id"], cd)
-                    st.subheader("🏆 Final Leaderboard")
-                    if lb.empty:
-                        st.write("No scores recorded.")
+                    if r["format"] == "Wolf":
+                        # Wolf past round
+                        wp = get_wolf_players(r["id"])
+                        ws = get_wolf_scores(r["id"])
+                        wd = get_wolf_decisions(r["id"])
+                        if wp:
+                            st.subheader("🏆 Final Leaderboard")
+                            wstand, wpts, wcum16 = compute_standings(wp, ws, wd, cd)
+                            st.markdown(build_wolf_leaderboard_html(wstand), unsafe_allow_html=True)
+                            st.divider()
+                            st.subheader("📋 Scorecard")
+                            st.markdown(build_wolf_scorecard_html(wp, ws, wd, wpts, wcum16, cd),
+                                        unsafe_allow_html=True)
+                        else:
+                            st.write("No players recorded.")
                     else:
-                        st.markdown(lb.to_html(index=False, classes="lb-table", border=0),
-                                    unsafe_allow_html=True)
-                    st.divider()
-                    st.subheader("📋 Scorecards")
-                    past_teams = get_teams(r["id"])
-                    if past_teams:
-                        sel = st.selectbox("Team", [t["team_name"] for t in past_teams],
-                                           key=f"past_team_{r['id']}")
-                        pt = next(t for t in past_teams if t["team_name"] == sel)
-                        st.markdown(build_scorecard_html(r["id"], pt, cd),
-                                    unsafe_allow_html=True)
-                    else:
-                        st.write("No teams.")
+                        st.subheader("🏆 Final Leaderboard")
+                        if lb.empty:
+                            st.write("No scores recorded.")
+                        else:
+                            st.markdown(lb.to_html(index=False, classes="lb-table", border=0),
+                                        unsafe_allow_html=True)
+                        st.divider()
+                        st.subheader("📋 Scorecards")
+                        past_teams = get_teams(r["id"])
+                        if past_teams:
+                            sel = st.selectbox("Team", [t["team_name"] for t in past_teams],
+                                               key=f"past_team_{r['id']}")
+                            pt = next(t for t in past_teams if t["team_name"] == sel)
+                            st.markdown(build_scorecard_html(r["id"], pt, cd),
+                                        unsafe_allow_html=True)
+                        else:
+                            st.write("No teams.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SETUP
@@ -486,6 +705,64 @@ elif page == "setup":
     home_btn()
     course_data = COURSES[rnd["course"]]
     tee_names   = list(course_data["tees"].keys())
+
+    # ── Wolf setup ────────────────────────────────────────────────────────────
+    if rnd["format"] == "Wolf":
+        st.title(f"🐺 Wolf Setup — {rnd['course']}")
+        st.info(f"Round code: **{rid}** — share with all 4 players")
+
+        player_options = [f"{name} (hcp {hcp})" for name, hcp in PLAYERS]
+        existing_wolf  = get_wolf_players(rid)
+
+        if existing_wolf:
+            st.success("Players registered:")
+            for p in existing_wolf:
+                hcp = _wolf_course_hcp(p, course_data)
+                st.markdown(f"**{p['wolf_order']}.** {p['player_name']} — {p['tee']} tee, course hcp **{hcp}**")
+            if st.button("🔄 Reset Players", type="secondary"):
+                delete_wolf_players(rid)
+                st.rerun()
+            st.divider()
+            if st.button("▶ Start Scoring", type="primary"):
+                go("score", round=rid)
+        else:
+            st.subheader("Set Wolf Order & Tees")
+            st.caption("The order determines who is wolf on each hole: Order 1 → holes 1,5,9,13 · Order 2 → 2,6,10,14 · etc.")
+
+            with st.form("wolf_setup"):
+                cols = st.columns(2)
+                sel, tees = [], []
+                labels = ["1st Wolf (holes 1,5,9,13)", "2nd Wolf (holes 2,6,10,14)",
+                          "3rd Wolf (holes 3,7,11,15)", "4th Wolf (holes 4,8,12,16)"]
+                for i, label in enumerate(labels):
+                    with cols[i % 2]:
+                        st.markdown(f"**{label}**")
+                        s = st.selectbox("Player", player_options, key=f"ws_{i}",
+                                         index=min(i, len(player_options)-1))
+                        t = st.selectbox("Tee", tee_names, index=1, key=f"wt_{i}")
+                        sel.append(s); tees.append(t)
+
+                # Preview course handicaps
+                preview = []
+                for s, t in zip(sel, tees):
+                    idx = PLAYERS[player_options.index(s)][1]
+                    ti  = _tee_info(course_data, t)
+                    chcp = course_handicap(idx, ti["slope"], ti["rating"], sum(course_data["par"]))
+                    name = s.split(" (")[0]
+                    preview.append(f"**{name}** → hcp {chcp} ({t})")
+                st.info("  ·  ".join(preview))
+
+                if st.form_submit_button("Save Players & Start", type="primary"):
+                    names = [s.split(" (")[0] for s in sel]
+                    if len(set(names)) < 4:
+                        st.error("Each player must be different.")
+                    else:
+                        for i, (s, t) in enumerate(zip(sel, tees), 1):
+                            name = s.split(" (")[0]
+                            idx  = PLAYERS[player_options.index(s)][1]
+                            add_wolf_player(rid, i, name, idx, t)
+                        go("score", round=rid)
+        st.stop()
 
     st.title(f"⚙️ Setup — {rnd['course']}")
     st.info(f"Round code: **{rid}** — share this with other teams to join on their phones")
@@ -562,14 +839,253 @@ elif page == "score":
         st.stop()
 
     course_data = COURSES[rnd["course"]]
-    teams = get_teams(rid)
-    pars  = course_data["par"]
+    pars        = course_data["par"]
 
     home_btn()
     st.title(f"⛳ {rnd['course']}")
     st.caption(f"Code: **{rid}** · {rnd['format']}"
                + (" · 🏁 **FINAL**" if rnd["status"] == "completed" else ""))
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # WOLF FORMAT
+    # ══════════════════════════════════════════════════════════════════════════
+    if rnd["format"] == "Wolf":
+        wolf_players = get_wolf_players(rid)
+        if not wolf_players:
+            st.warning("No players set up yet.")
+            if st.button("Go to Setup"):
+                go("setup", round=rid)
+            st.stop()
+
+        wolf_scores   = get_wolf_scores(rid)
+        wolf_dec      = get_wolf_decisions(rid)
+        all_ids       = [p["id"] for p in wolf_players]
+        player_map    = {p["id"]: p for p in wolf_players}
+
+        # Compute standings (needed for wolf 17/18 and leaderboard)
+        standings, hole_pts, cum16 = compute_standings(
+            wolf_players, wolf_scores, wolf_dec, course_data
+        )
+
+        tab_score, tab_board, tab_card, tab_admin = st.tabs(
+            ["📝 Scores", "🏆 Leaderboard", "📋 Scorecard", "🔒 Admin"]
+        )
+
+        with tab_score:
+            if rnd["status"] == "completed":
+                st.warning("🏁 Round finalised — view results in Leaderboard and Scorecard tabs.")
+            else:
+                # Auth: enter any player name OR admin password
+                wolf_auth_key = f"wolf_auth_{rid}"
+                if not st.session_state.get(wolf_auth_key, False):
+                    st.info("Enter your name (or admin password) to enter scores.")
+                    ca, cb = st.columns([3, 1])
+                    with ca:
+                        entered = st.text_input("Your name", key="wolf_auth_input",
+                                                placeholder="e.g. Riki")
+                    with cb:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("Unlock", type="primary", key="wolf_auth_btn"):
+                            valid_names = {p["player_name"].lower() for p in wolf_players}
+                            if entered.lower() in valid_names or entered == ADMIN_PASSWORD:
+                                st.session_state[wolf_auth_key] = True
+                                st.rerun()
+                            else:
+                                st.error("Name not recognised.")
+                else:
+                    # Hole status grid
+                    def wolf_hole_status(h):
+                        scored = sum(1 for p in wolf_players if wolf_scores.get((p["id"], h)) is not None)
+                        has_dec = h in wolf_dec
+                        if scored == 4 and has_dec:
+                            return "done"
+                        elif scored > 0 or has_dec:
+                            return "partial"
+                        return "empty"
+
+                    statuses = [wolf_hole_status(h) for h in range(1, 19)]
+                    st.markdown("**Hole progress** — 🟢 complete · 🟡 partial · ⚪ not started")
+                    grid_html = '<div class="hole-grid">'
+                    for h in range(1, 19):
+                        s   = statuses[h - 1]
+                        cls = "h-done" if s == "done" else ("h-partial" if s == "partial" else "h-empty")
+                        ico = "✓" if s == "done" else ("½" if s == "partial" else str(h))
+                        grid_html += f'<div class="hole-btn {cls}">{ico}</div>'
+                    grid_html += "</div>"
+                    st.markdown(grid_html, unsafe_allow_html=True)
+                    st.divider()
+
+                    default_h = next((h for h, s in enumerate(statuses, 1) if s != "done"), 18)
+                    h = st.select_slider("Select Hole", options=list(range(1, 19)),
+                                         value=default_h, format_func=lambda x: f"Hole {x}")
+
+                    par_h = pars[h - 1]
+                    wolf_p = wolf_for_hole(wolf_players, h, cum16 if h > 16 else None)
+                    dec    = wolf_dec.get(h, {})
+                    decision   = dec.get("decision")
+                    partner_id = dec.get("partner_id")
+
+                    # Wolf header
+                    st.markdown(f"**Par {par_h}** &nbsp;·&nbsp; "
+                                f"🐺 Wolf: **{wolf_p['player_name']}**")
+
+                    # ── Decision section ──────────────────────────────────────
+                    st.subheader("Wolf's Decision")
+                    if decision:
+                        dec_labels = {
+                            "blind_lone": "🦅 Blind Lone Wolf",
+                            "lone":       "🐺 Lone Wolf",
+                            "partner":    f"🤝 Partner: {player_map[partner_id]['player_name']}" if partner_id else "🤝 Partner",
+                        }
+                        st.success(f"Decision: **{dec_labels.get(decision, decision)}**")
+                        if st.button("↩ Change Decision", key=f"clr_dec_{h}"):
+                            clear_wolf_decision(rid, h)
+                            st.rerun()
+                    else:
+                        d1, d2, d3 = st.columns(3)
+                        with d1:
+                            if st.button("🦅 Blind Lone Wolf\n*(before shots)*",
+                                         key=f"blind_{h}", use_container_width=True):
+                                set_wolf_decision(rid, h, "blind_lone")
+                                st.rerun()
+                        with d2:
+                            if st.button("🐺 Lone Wolf\n*(after shots)*",
+                                         key=f"lone_{h}", use_container_width=True):
+                                set_wolf_decision(rid, h, "lone")
+                                st.rerun()
+                        with d3:
+                            others = [p for p in wolf_players if p["id"] != wolf_p["id"]]
+                            partner_sel = st.selectbox(
+                                "🤝 Pick Partner", ["— pick —"] + [p["player_name"] for p in others],
+                                key=f"partner_sel_{h}", label_visibility="collapsed"
+                            )
+                            if partner_sel != "— pick —":
+                                pid = next(p["id"] for p in others if p["player_name"] == partner_sel)
+                                set_wolf_decision(rid, h, "partner", pid)
+                                st.rerun()
+
+                    st.divider()
+
+                    # ── Score entry ───────────────────────────────────────────
+                    st.subheader("Scores")
+                    gross_vals = {}
+                    picked_up  = {}
+                    course_hcps = {p["id"]: _wolf_course_hcp(p, course_data) for p in wolf_players}
+
+                    for p in wolf_players:
+                        pid  = p["id"]
+                        ti   = _tee_info(course_data, p["tee"])
+                        si   = course_data[ti["si_key"]][h - 1]
+                        stk  = strokes_on_hole(course_hcps[pid], si)
+                        is_w = (wolf_p["id"] == pid)
+                        existing_g = wolf_scores.get((pid, h))
+
+                        ca, cb, cc = st.columns([3, 2, 2])
+                        with ca:
+                            wolf_icon = "🐺 " if is_w else ""
+                            tee_color = ti["color"]
+                            stroke_txt = (f' <b style="color:#1a7a3c">-{stk} stroke{"s" if stk!=1 else ""}</b>'
+                                          if stk > 0 else " · no stroke")
+                            st.markdown(
+                                f'{wolf_icon}<b>{p["player_name"]}</b> '
+                                f'<span style="background:{tee_color};color:white;border-radius:3px;padding:0 5px;font-size:0.75rem">'
+                                f'{p["tee"]}</span> hcp <b>{course_hcps[pid]}</b>{stroke_txt}',
+                                unsafe_allow_html=True
+                            )
+                        with cb:
+                            pu = st.checkbox("Picked up", key=f"pu_{h}_{pid}")
+                            picked_up[pid] = pu
+                        with cc:
+                            if not pu:
+                                g = st.number_input("Gross", 1, 15,
+                                                    value=int(existing_g) if existing_g else par_h,
+                                                    key=f"wg_{h}_{pid}", label_visibility="collapsed")
+                                ns = net_score(g, course_hcps[pid], si)
+                                st.caption(f"Net: **{ns}**")
+                                gross_vals[pid] = g
+                            else:
+                                gross_vals[pid] = None
+                                st.caption("—")
+
+                    # Preview result
+                    if decision:
+                        net_scores_now = {}
+                        for p in wolf_players:
+                            g = gross_vals.get(p["id"])
+                            if g is not None:
+                                ti = _tee_info(course_data, p["tee"])
+                                si = course_data[ti["si_key"]][h - 1]
+                                net_scores_now[p["id"]] = net_score(g, course_hcps[p["id"]], si)
+                            else:
+                                net_scores_now[p["id"]] = None
+                        pts_preview, result = compute_hole_points(
+                            decision, wolf_p["id"], partner_id, net_scores_now, all_ids
+                        )
+                        label = RESULT_LABELS.get(result, result)
+                        if result == "wolf_wins":
+                            st.success(f"Preview: {label} — "
+                                       + ", ".join(f"{player_map[pid]['player_name']} +{pts}" for pid, pts in pts_preview.items() if pts > 0))
+                        elif result == "others_win":
+                            st.warning(f"Preview: {label} — "
+                                       + ", ".join(f"{player_map[pid]['player_name']} +{pts}" for pid, pts in pts_preview.items() if pts > 0))
+                        elif result == "push":
+                            st.info(f"Preview: {label}")
+
+                    if st.button("💾 Save Hole", type="primary", key=f"save_wolf_{h}"):
+                        for p in wolf_players:
+                            upsert_wolf_score(rid, p["id"], h, gross_vals.get(p["id"]))
+                        st.success(f"Hole {h} saved!")
+                        st.rerun()
+
+        with tab_board:
+            st.subheader("🏆 Wolf Leaderboard")
+            standings, hole_pts, cum16 = compute_standings(
+                wolf_players, wolf_scores, wolf_dec, course_data
+            )
+            st.markdown(build_wolf_leaderboard_html(standings), unsafe_allow_html=True)
+            if st.button("🔄 Refresh", key="wolf_lb_refresh"):
+                st.rerun()
+
+        with tab_card:
+            st.subheader("📋 Wolf Scorecard")
+            st.caption("🐺 = wolf this hole · • = handicap stroke · 🟡 = points earned")
+            standings2, hole_pts2, cum16_2 = compute_standings(
+                wolf_players, wolf_scores, wolf_dec, course_data
+            )
+            st.markdown(
+                build_wolf_scorecard_html(wolf_players, wolf_scores, wolf_dec,
+                                          hole_pts2, cum16_2, course_data),
+                unsafe_allow_html=True
+            )
+
+        with tab_admin:
+            st.subheader("🔒 Admin")
+            pw = st.text_input("Admin password", type="password", key="wolf_admin_pw")
+            if pw == ADMIN_PASSWORD:
+                st.success("Authenticated ✓")
+                if rnd["status"] == "active":
+                    if st.button("🏁 Finalise Round", type="primary"):
+                        finalize_round(rid)
+                        st.success("Round finalised!")
+                        st.rerun()
+                else:
+                    st.info("Round already finalised.")
+            elif pw:
+                st.error("Incorrect password.")
+
+        st.divider()
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("⚙️ Edit Players", key="wolf_edit"):
+                go("setup", round=rid)
+        with col_b:
+            st.caption(f"Round: **{rid}**")
+        st.stop()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # BEST BALL FORMAT (existing)
+    # ══════════════════════════════════════════════════════════════════════════
+    teams = get_teams(rid)
     if not teams:
         st.warning("No teams yet.")
         if st.button("Go to Setup"):
