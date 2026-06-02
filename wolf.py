@@ -51,7 +51,7 @@ def compute_hole_points(
 
     if decision in ("blind_lone", "lone"):
         pts_win  = 6 if decision == "blind_lone" else 4
-        pts_lose = 6 if decision == "blind_lone" else 3
+        pts_lose = 3 if decision == "blind_lone" else 2   # BLW lose→3, LW lose→2
         others   = {pid: ns for pid, ns in scored.items() if pid != wolf_id}
         if wolf_net is None or not others:
             return points, "incomplete"
@@ -80,7 +80,7 @@ def compute_hole_points(
             return points, "wolf_wins"
         elif best_wolf > best_other:
             for pid in other_team:
-                points[pid] = 2
+                points[pid] = 3              # Wolf+Partner lose → others get 3
             return points, "others_win"
         else:
             return points, "push"
