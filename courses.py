@@ -77,8 +77,8 @@ def net_score(gross: int, course_hcp: int, si: int) -> int:
 
 # ── Scorecard cell HTML ───────────────────────────────────────────────────────
 
-def score_cell_html(gross, par) -> str:
-    """Return gross score wrapped in golf-standard symbols."""
+def score_cell_html(gross, par, strokes: int = 0) -> str:
+    """Return gross score wrapped in golf-standard symbols, with handicap dot(s) if strokes > 0."""
     if gross is None or gross == "":
         return '<span style="color:#aaa">—</span>'
     try:
@@ -89,23 +89,30 @@ def score_cell_html(gross, par) -> str:
 
     diff = gross - par
 
-    base = f'<b>{gross}</b>'
-
     if diff <= -2:   # Eagle or better — double circle
-        return (f'<span style="display:inline-block;border:2px solid #1a7a3c;border-radius:50%;'
-                f'box-shadow:0 0 0 4px #1a7a3c;padding:1px 5px;color:#1a7a3c;">{gross}</span>')
+        inner = (f'<span style="display:inline-block;border:2px solid #1a7a3c;border-radius:50%;'
+                 f'box-shadow:0 0 0 4px #1a7a3c;padding:1px 5px;color:#1a7a3c;">{gross}</span>')
     elif diff == -1: # Birdie — single circle
-        return (f'<span style="display:inline-block;border:2px solid #1a7a3c;border-radius:50%;'
-                f'padding:1px 5px;color:#1a7a3c;">{gross}</span>')
+        inner = (f'<span style="display:inline-block;border:2px solid #1a7a3c;border-radius:50%;'
+                 f'padding:1px 5px;color:#1a7a3c;">{gross}</span>')
     elif diff == 0:  # Par — plain
-        return str(gross)
+        inner = str(gross)
     elif diff == 1:  # Bogey — single square
-        return (f'<span style="display:inline-block;border:2px solid #333;'
-                f'padding:1px 5px;">{gross}</span>')
+        inner = (f'<span style="display:inline-block;border:2px solid #333;'
+                 f'padding:1px 5px;">{gross}</span>')
     elif diff == 2:  # Double bogey — double square
-        return (f'<span style="display:inline-block;border:2px solid #333;'
-                f'outline:2px solid #333;outline-offset:3px;padding:1px 5px;">{gross}</span>')
+        inner = (f'<span style="display:inline-block;border:2px solid #333;'
+                 f'outline:2px solid #333;outline-offset:3px;padding:1px 5px;">{gross}</span>')
     else:            # Triple+ — red double square
-        return (f'<span style="display:inline-block;border:2px solid #c00;'
-                f'outline:2px solid #c00;outline-offset:3px;'
-                f'padding:1px 5px;color:#c00;font-weight:bold;">{gross}</span>')
+        inner = (f'<span style="display:inline-block;border:2px solid #c00;'
+                 f'outline:2px solid #c00;outline-offset:3px;'
+                 f'padding:1px 5px;color:#c00;font-weight:bold;">{gross}</span>')
+
+    if strokes > 0:
+        dots = '•' * strokes
+        # Wrap in a relative-positioned span so the dot sits in the top-right corner
+        return (f'<span style="position:relative;display:inline-block">'
+                f'<span style="position:absolute;top:-3px;right:-4px;font-size:0.55rem;'
+                f'color:#111;line-height:1;font-weight:bold">{dots}</span>'
+                f'{inner}</span>')
+    return inner
