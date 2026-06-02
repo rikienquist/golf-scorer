@@ -52,7 +52,7 @@ COURSES = {
     }
 }
 
-FORMATS = ["2-Person Net Best Ball"]
+FORMATS = ["2-Person Net Best Ball", "Wolf"]
 
 ADMIN_PASSWORD = "chigga"
 
