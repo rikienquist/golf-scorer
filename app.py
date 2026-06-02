@@ -133,6 +133,7 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
         total_net_bb = 0
         par_played   = 0
         holes_counted = 0
+        shotguns      = 0
         thru = 0
 
         for h in range(1, 19):
@@ -142,7 +143,7 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
                 continue
             thru = h
             holes_counted += 1
-            par_played += pars[h - 1]   # only add par for holes actually played
+            par_played += pars[h - 1]
             nets = []
             si1 = _si_for_player(team, 1, course_data, h - 1)
             si2 = _si_for_player(team, 2, course_data, h - 1)
@@ -150,7 +151,10 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
                 nets.append(net_score(g1, hcp1, si1))
             if g2 is not None:
                 nets.append(net_score(g2, hcp2, si2))
-            total_net_bb += min(nets)
+            bb = min(nets)
+            total_net_bb += bb
+            if bb > pars[h - 1]:
+                shotguns += 1
 
         if holes_counted == 0:
             vs_par_str = "—"
@@ -169,6 +173,7 @@ def compute_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
             "Thru":     thru if holes_counted > 0 else "—",
             "Net Tot":  total_str,
             "vs Par":   vs_par_str,
+            "🍺 Shotguns": shotguns if holes_counted > 0 else "—",
             "_sort":    sort_key,
         })
 
@@ -287,6 +292,21 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
         cells += f'<td class="subtotal">{tot if tot is not None else "—"}</td>'
         return cells
 
+    def shotgun_row(holes_f, holes_b):
+        sg_out = sum(1 for d in holes_f if d["vs"] is not None and d["vs"] > 0)
+        sg_in  = sum(1 for d in holes_b if d["vs"] is not None and d["vs"] > 0)
+        sg_tot = sg_out + sg_in
+        def sg_cell(d):
+            if d["vs"] is None:
+                return '<td style="color:#aaa">—</td>'
+            return '<td style="font-size:1.1rem">🍺</td>' if d["vs"] > 0 else '<td></td>'
+        cells = "".join(sg_cell(d) for d in holes_f)
+        cells += f'<td class="subtotal">{sg_out or ""}</td>'
+        cells += "".join(sg_cell(d) for d in holes_b)
+        cells += f'<td class="subtotal">{sg_in or ""}</td>'
+        cells += f'<td class="subtotal">{sg_tot or ""}</td>'
+        return cells
+
     def vs_row(holes_f, holes_b, vs_out, vs_in, vs_tot):
         cells = "".join(vs_cell(d["vs"]) for d in holes_f)
         cells += vs_cell(vs_out)
@@ -339,6 +359,10 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
         <tr>
           <td class="row-label">vs Par</td>
           {vs_row(front, back, vs_out_val, vs_in_val, vs_tot_val)}
+        </tr>
+        <tr style="background:#fff3e0">
+          <td class="row-label">🍺 Shotgun</td>
+          {shotgun_row(front, back)}
         </tr>
       </tbody>
     </table>
@@ -431,7 +455,7 @@ elif page == "setup":
             hcp1 = _player_course_hcp(t, 1, course_data)
             hcp2 = _player_course_hcp(t, 2, course_data)
             st.markdown(
-                f"• **{t['team_name']}**: "
+                f"• **{t['team_name']}** (PIN: `{t['pin']}`): "
                 f"{t['p1_name']} (idx {t['p1_handicap']}, {t['p1_tee']} tee, course hcp **{hcp1}**) & "
                 f"{t['p2_name']} (idx {t['p2_handicap']}, {t['p2_tee']} tee, course hcp **{hcp2}**)"
             )
@@ -471,8 +495,9 @@ elif page == "setup":
             else:
                 p1_name = PLAYERS[player_options.index(p1_sel)][0]
                 p2_name = PLAYERS[player_options.index(p2_sel)][0]
-                add_team(rid, team_name, p1_name, p1_idx, p1_tee, p2_name, p2_idx, p2_tee)
+                tid, pin = add_team(rid, team_name, p1_name, p1_idx, p1_tee, p2_name, p2_idx, p2_tee)
                 st.success(f"Team '{team_name}' added!")
+                st.warning(f"🔑 **Team PIN: {pin}** — write this down! You'll need it to enter scores.", icon="🔑")
                 st.rerun()
 
     st.divider()
@@ -524,6 +549,26 @@ elif page == "score":
         sel_name   = st.selectbox("Your Team", team_names, key="team_sel")
         team       = next(t for t in teams if t["team_name"] == sel_name)
         tid        = team["id"]
+
+        # ── PIN / admin gate ──────────────────────────────────────────────────
+        auth_key = f"auth_{rid}_{tid}"
+        if not st.session_state.get(auth_key, False):
+            st.info(f"Enter your team PIN to edit scores for **{sel_name}**.")
+            pin_col, btn_col = st.columns([3, 1])
+            with pin_col:
+                entered = st.text_input("PIN", max_chars=10, key=f"pin_input_{tid}",
+                                        placeholder="4-digit PIN or admin password")
+            with btn_col:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("Unlock", key=f"pin_btn_{tid}", type="primary"):
+                    if entered == team["pin"] or entered == ADMIN_PASSWORD:
+                        st.session_state[auth_key] = True
+                        st.rerun()
+                    else:
+                        st.error("Wrong PIN — ask whoever set up your team.")
+            st.stop()
+        # Authenticated — show a small unlock indicator
+        st.caption(f"🔓 Editing scores for **{sel_name}**")
 
         hcp1 = _player_course_hcp(team, 1, course_data)
         hcp2 = _player_course_hcp(team, 2, course_data)
@@ -628,7 +673,11 @@ elif page == "score":
         if st.button("💾 Save Hole", type="primary"):
             upsert_score(rid, tid, 1, h, g1)
             upsert_score(rid, tid, 2, h, g2)
-            st.success(f"Hole {h} saved!")
+            # Shotgun check
+            if nets and min(nets) > par:
+                st.error("🍺🍺🍺 **SHOTGUN TIME — YOU SUCK** 🍺🍺🍺")
+            else:
+                st.success(f"Hole {h} saved!")
             st.rerun()
 
     # ── Leaderboard ───────────────────────────────────────────────────────────
