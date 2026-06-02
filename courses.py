@@ -54,7 +54,7 @@ COURSES = {
 
 FORMATS = ["2-Person Net Best Ball"]
 
-ADMIN_PASSWORD = "springbank"   # change this to whatever you like
+ADMIN_PASSWORD = "chigga"
 
 
 # ── Handicap maths ────────────────────────────────────────────────────────────
