@@ -238,10 +238,11 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
             bb, bb_par = None, par1
 
         vs = (bb - bb_par) if bb is not None else None
-        # Display par uses p1's par for the header row
+        stk1 = strokes_on_hole(hcp1, si1)
+        stk2 = strokes_on_hole(hcp2, si2)
         holes_data.append(dict(
-            par=par1, g1=g1, n1=n1, g2=g2, n2=n2, bb=bb, vs=vs, si1=si1, si2=si2,
-            par1=par1, par2=par2
+            par=par1, g1=g1, n1=n1, g2=g2, n2=n2, bb=bb, vs=vs,
+            si1=si1, si2=si2, par1=par1, par2=par2, stk1=stk1, stk2=stk2
         ))
 
     def subtotal(lst):
@@ -255,11 +256,11 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
         cls = "vspar-pos" if val > 0 else ("vspar-neg" if val < 0 else "vspar-e")
         return f'<td class="{cls}">{txt}</td>'
 
-    def scored_cell(val, par):
-        """Cell with golf symbols — works for gross AND net scores."""
+    def scored_cell(val, par, strokes=0):
+        """Cell with golf symbols + handicap dot if strokes > 0."""
         if val is None:
             return '<td style="color:#aaa">—</td>'
-        return f'<td>{score_cell_html(val, par)}</td>'
+        return f'<td style="text-align:center">{score_cell_html(val, par, strokes)}</td>'
 
     def plain_cell(val):
         return f'<td>{val}</td>' if val is not None else '<td style="color:#aaa">—</td>'
@@ -281,8 +282,10 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
     bb_front = [d["bb"] for d in front];  bb_back = [d["bb"] for d in back]
     si1_front = [d["si1"] for d in front]; si1_back = [d["si1"] for d in back]
     si2_front = [d["si2"] for d in front]; si2_back = [d["si2"] for d in back]
-    pf  = [d["par1"] for d in front];  pb  = [d["par1"] for d in back]   # p1 par (header row)
-    pf2 = [d["par2"] for d in front];  pb2 = [d["par2"] for d in back]   # p2 par
+    pf  = [d["par1"] for d in front];  pb  = [d["par1"] for d in back]
+    pf2 = [d["par2"] for d in front];  pb2 = [d["par2"] for d in back]
+    stk1f = [d["stk1"] for d in front]; stk1b = [d["stk1"] for d in back]
+    stk2f = [d["stk2"] for d in front]; stk2b = [d["stk2"] for d in back]
 
     # Subtotals (only sum holes that have a value — fixes the -29 bug)
     g1_out = subtotal(g1_front); g1_in = subtotal(g1_back); g1_tot = subtotal([g1_out, g1_in])
@@ -305,14 +308,17 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
         cells += "".join(f'<td style="color:#888;font-size:0.75rem">{s}</td>' for s in si_vals_back)
         return cells + '<td class="subtotal">—</td><td class="subtotal">—</td>'
 
-    def score_row(vals_f, vals_b, out, inp, tot, pars_f, pars_b, with_symbols=False):
-        """Render a data row; with_symbols adds golf circles/squares."""
+    def score_row(vals_f, vals_b, out, inp, tot, pars_f, pars_b,
+                  with_symbols=False, strokes_f=None, strokes_b=None):
+        """Render a data row; with_symbols adds golf circles/squares and handicap dots."""
         cells = ""
-        for v, p in zip(vals_f, pars_f):
-            cells += scored_cell(v, p) if with_symbols else plain_cell(v)
+        for i, (v, p) in enumerate(zip(vals_f, pars_f)):
+            stk = strokes_f[i] if strokes_f else 0
+            cells += scored_cell(v, p, stk) if with_symbols else plain_cell(v)
         cells += f'<td class="subtotal">{out if out is not None else "—"}</td>'
-        for v, p in zip(vals_b, pars_b):
-            cells += scored_cell(v, p) if with_symbols else plain_cell(v)
+        for i, (v, p) in enumerate(zip(vals_b, pars_b)):
+            stk = strokes_b[i] if strokes_b else 0
+            cells += scored_cell(v, p, stk) if with_symbols else plain_cell(v)
         cells += f'<td class="subtotal">{inp if inp is not None else "—"}</td>'
         cells += f'<td class="subtotal">{tot if tot is not None else "—"}</td>'
         return cells
@@ -362,7 +368,8 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
         <tr><td class="row-label">{p1} SI</td>{si_row(si1_front, si1_back)}</tr>
         <tr>
           <td class="row-label">{p1} Gross (hcp {hcp1})</td>
-          {score_row(g1_front, g1_back, g1_out, g1_in, g1_tot, pf, pb, with_symbols=True)}
+          {score_row(g1_front, g1_back, g1_out, g1_in, g1_tot, pf, pb,
+                     with_symbols=True, strokes_f=stk1f, strokes_b=stk1b)}
         </tr>
         <tr>
           <td class="row-label">{p1} Net</td>
@@ -371,7 +378,8 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
         <tr><td class="row-label">{p2} SI</td>{si_row(si2_front, si2_back)}</tr>
         <tr>
           <td class="row-label">{p2} Gross (hcp {hcp2})</td>
-          {score_row(g2_front, g2_back, g2_out, g2_in, g2_tot, pf2, pb2, with_symbols=True)}
+          {score_row(g2_front, g2_back, g2_out, g2_in, g2_tot, pf2, pb2,
+                     with_symbols=True, strokes_f=stk2f, strokes_b=stk2b)}
         </tr>
         <tr>
           <td class="row-label">{p2} Net</td>
@@ -443,16 +451,27 @@ if page == "home":
             st.info("No completed rounds yet.")
         else:
             for r in completed:
-                with st.expander(f"🏁 {r['id']} — {r['course']}  ·  {r['created_at'][:10]}"):
-                    course_data = COURSES[r["course"]]
-                    lb = compute_leaderboard(r["id"], course_data)
+                label = f"🏁 {r['id']} — {r['course']}  ·  {r['created_at'][:10]}"
+                with st.expander(label):
+                    cd = COURSES[r["course"]]
+                    lb = compute_leaderboard(r["id"], cd)
+                    st.subheader("🏆 Final Leaderboard")
                     if lb.empty:
                         st.write("No scores recorded.")
                     else:
                         st.markdown(lb.to_html(index=False, classes="lb-table", border=0),
                                     unsafe_allow_html=True)
-                    if st.button("View full scorecard", key=f"past_{r['id']}"):
-                        go("score", round=r["id"])
+                    st.divider()
+                    st.subheader("📋 Scorecards")
+                    past_teams = get_teams(r["id"])
+                    if past_teams:
+                        sel = st.selectbox("Team", [t["team_name"] for t in past_teams],
+                                           key=f"past_team_{r['id']}")
+                        pt = next(t for t in past_teams if t["team_name"] == sel)
+                        st.markdown(build_scorecard_html(r["id"], pt, cd),
+                                    unsafe_allow_html=True)
+                    else:
+                        st.write("No teams.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SETUP
@@ -567,143 +586,139 @@ elif page == "score":
     # ── Enter Scores ──────────────────────────────────────────────────────────
     with tab_score:
         if rnd["status"] == "completed":
-            st.warning("This round has been finalised — scores are locked.")
-            st.stop()
-
-        team_names = [t["team_name"] for t in teams]
-        sel_name   = st.selectbox("Your Team", team_names, key="team_sel")
-        team       = next(t for t in teams if t["team_name"] == sel_name)
-        tid        = team["id"]
-
-        # ── Team name gate ────────────────────────────────────────────────────
-        auth_key = f"auth_{rid}_{tid}"
-        if not st.session_state.get(auth_key, False):
-            st.info(f"Enter your **team name** to edit scores for **{sel_name}**.")
-            pin_col, btn_col = st.columns([3, 1])
-            with pin_col:
-                entered = st.text_input("Team Name", max_chars=50, key=f"pin_input_{tid}",
-                                        placeholder="Your team name (case-insensitive)")
-            with btn_col:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("Unlock", key=f"pin_btn_{tid}", type="primary"):
-                    if entered.lower() == team["team_name"].lower() or entered == ADMIN_PASSWORD:
-                        st.session_state[auth_key] = True
-                        st.rerun()
-                    else:
-                        st.error("Team name didn't match — check spelling.")
-            st.stop()
-        # Authenticated — show a small unlock indicator
-        st.caption(f"🔓 Editing scores for **{sel_name}**")
-
-        hcp1 = _player_course_hcp(team, 1, course_data)
-        hcp2 = _player_course_hcp(team, 2, course_data)
-
-        statuses = hole_status(lkp, tid)
-
-        # Hole status grid
-        st.markdown("**Hole progress** — 🟢 complete · 🟡 partial · ⚪ not started")
-        grid_html = '<div class="hole-grid">'
-        for h in range(1, 19):
-            s = statuses[h - 1]
-            cls = "h-done" if s == "done" else ("h-partial" if s == "partial" else "h-empty")
-            icon = "✓" if s == "done" else ("½" if s == "partial" else str(h))
-            grid_html += f'<div class="hole-btn {cls}" title="Hole {h}">{icon}</div>'
-        grid_html += "</div>"
-        st.markdown(grid_html, unsafe_allow_html=True)
-
-        st.divider()
-
-        # Find first incomplete hole as default
-        default_hole = next((h for h, s in enumerate(statuses, 1) if s != "done"), 18)
-        h = st.select_slider("Select Hole", options=list(range(1, 19)), value=default_hole,
-                             format_func=lambda x: f"Hole {x}")
-
-        # Completion badge
-        status_now = statuses[h - 1]
-        if status_now == "done":
-            st.success(f"✅ Hole {h} — both scores recorded")
-        elif status_now == "partial":
-            st.warning(f"⚠️ Hole {h} — only one score recorded")
+            st.warning("🏁 This round has been finalised — scores are locked. View results in the Leaderboard and Scorecard tabs.")
         else:
-            st.info(f"⬜ Hole {h} — no scores yet")
+            team_names = [t["team_name"] for t in teams]
+            sel_name   = st.selectbox("Your Team", team_names, key="team_sel")
+            team       = next(t for t in teams if t["team_name"] == sel_name)
+            tid        = team["id"]
 
-        par   = pars[h - 1]
-        si1   = _si_for_player(team, 1, course_data, h - 1)
-        si2   = _si_for_player(team, 2, course_data, h - 1)
-        stk1  = strokes_on_hole(hcp1, si1)
-        stk2  = strokes_on_hole(hcp2, si2)
-
-        st.markdown(f"**Par {par}** &nbsp;·&nbsp; Hole SI — {team['p1_name']}: {si1} / {team['p2_name']}: {si2}")
-
-        st.divider()
-        c1, c2 = st.columns(2)
-
-        existing_g1 = lkp.get((tid, 1, h))
-        existing_g2 = lkp.get((tid, 2, h))
-
-        with c1:
-            tee_info1 = _tee_info(course_data, team["p1_tee"])
-            tee_color = tee_info1["color"]
-            st.markdown(
-                f'<b>{team["p1_name"]}</b> '
-                f'<span style="background:{tee_color};color:white;border-radius:4px;padding:1px 6px;font-size:0.75rem">'
-                f'{team["p1_tee"]}</span> &nbsp; Course hcp <b>{hcp1}</b> · +{stk1} here',
-                unsafe_allow_html=True
-            )
-            p1_no_score = st.checkbox("Picked up / no score", key=f"p1_pu_{h}",
-                                      value=(existing_g1 is None and status_now != "empty"))
-            if not p1_no_score:
-                g1 = st.number_input("Gross score", 1, 15,
-                                     value=int(existing_g1) if existing_g1 else par,
-                                     key=f"g1_{h}", label_visibility="collapsed")
-                n1 = net_score(g1, hcp1, si1)
-                st.caption(f"Net: **{n1}**")
+            # ── Team name gate ────────────────────────────────────────────────
+            auth_key = f"auth_{rid}_{tid}"
+            if not st.session_state.get(auth_key, False):
+                st.info(f"Enter your **team name** to edit scores for **{sel_name}**.")
+                pin_col, btn_col = st.columns([3, 1])
+                with pin_col:
+                    entered = st.text_input("Team Name", max_chars=50, key=f"pin_input_{tid}",
+                                            placeholder="Your team name (case-insensitive)")
+                with btn_col:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("Unlock", key=f"pin_btn_{tid}", type="primary"):
+                        if entered.lower() == team["team_name"].lower() or entered == ADMIN_PASSWORD:
+                            st.session_state[auth_key] = True
+                            st.rerun()
+                        else:
+                            st.error("Team name didn't match — check spelling.")
             else:
-                g1 = None
-                st.caption("No score for this hole")
+                st.caption(f"🔓 Editing scores for **{sel_name}**")
 
-        with c2:
-            tee_info2 = _tee_info(course_data, team["p2_tee"])
-            tee_color2 = tee_info2["color"]
-            st.markdown(
-                f'<b>{team["p2_name"]}</b> '
-                f'<span style="background:{tee_color2};color:white;border-radius:4px;padding:1px 6px;font-size:0.75rem">'
-                f'{team["p2_tee"]}</span> &nbsp; Course hcp <b>{hcp2}</b> · +{stk2} here',
-                unsafe_allow_html=True
-            )
-            p2_no_score = st.checkbox("Picked up / no score", key=f"p2_pu_{h}",
-                                      value=(existing_g2 is None and status_now != "empty"))
-            if not p2_no_score:
-                g2 = st.number_input("Gross score", 1, 15,
-                                     value=int(existing_g2) if existing_g2 else par,
-                                     key=f"g2_{h}", label_visibility="collapsed")
-                n2 = net_score(g2, hcp2, si2)
-                st.caption(f"Net: **{n2}**")
-            else:
-                g2 = None
-                st.caption("No score for this hole")
+                hcp1 = _player_course_hcp(team, 1, course_data)
+                hcp2 = _player_course_hcp(team, 2, course_data)
 
-        # Best net summary
-        nets = []
-        if g1 is not None:
-            nets.append(net_score(g1, hcp1, si1))
-        if g2 is not None:
-            nets.append(net_score(g2, hcp2, si2))
-        if nets:
-            bb  = min(nets)
-            vs  = bb - par
-            vs_str = f"+{vs}" if vs > 0 else ("E" if vs == 0 else str(vs))
-            st.info(f"Best Net Ball this hole: **{bb}** ({vs_str})")
+                statuses = hole_status(lkp, tid)
 
-        if st.button("💾 Save Hole", type="primary"):
-            upsert_score(rid, tid, 1, h, g1)
-            upsert_score(rid, tid, 2, h, g2)
-            # Shotgun check
-            if nets and min(nets) > par:
-                st.error("🍺🍺🍺 **SHOTGUN TIME — YOU SUCK** 🍺🍺🍺")
-            else:
-                st.success(f"Hole {h} saved!")
-            st.rerun()
+                # Hole status grid
+                st.markdown("**Hole progress** — 🟢 complete · 🟡 partial · ⚪ not started")
+                grid_html = '<div class="hole-grid">'
+                for h in range(1, 19):
+                    s = statuses[h - 1]
+                    cls = "h-done" if s == "done" else ("h-partial" if s == "partial" else "h-empty")
+                    icon = "✓" if s == "done" else ("½" if s == "partial" else str(h))
+                    grid_html += f'<div class="hole-btn {cls}" title="Hole {h}">{icon}</div>'
+                grid_html += "</div>"
+                st.markdown(grid_html, unsafe_allow_html=True)
+
+                st.divider()
+
+                default_hole = next((h for h, s in enumerate(statuses, 1) if s != "done"), 18)
+                h = st.select_slider("Select Hole", options=list(range(1, 19)), value=default_hole,
+                                     format_func=lambda x: f"Hole {x}")
+
+                status_now = statuses[h - 1]
+                if status_now == "done":
+                    st.success(f"✅ Hole {h} — both scores recorded")
+                elif status_now == "partial":
+                    st.warning(f"⚠️ Hole {h} — only one score recorded")
+                else:
+                    st.info(f"⬜ Hole {h} — no scores yet")
+
+                par   = pars[h - 1]
+                si1   = _si_for_player(team, 1, course_data, h - 1)
+                si2   = _si_for_player(team, 2, course_data, h - 1)
+                stk1  = strokes_on_hole(hcp1, si1)
+                stk2  = strokes_on_hole(hcp2, si2)
+
+                st.markdown(f"**Par {par}** &nbsp;·&nbsp; Hole SI — {team['p1_name']}: {si1} / {team['p2_name']}: {si2}")
+
+                st.divider()
+                c1, c2 = st.columns(2)
+
+                existing_g1 = lkp.get((tid, 1, h))
+                existing_g2 = lkp.get((tid, 2, h))
+
+                with c1:
+                    tee_info1 = _tee_info(course_data, team["p1_tee"])
+                    tee_color = tee_info1["color"]
+                    st.markdown(
+                        f'<b>{team["p1_name"]}</b> '
+                        f'<span style="background:{tee_color};color:white;border-radius:4px;padding:1px 6px;font-size:0.75rem">'
+                        f'{team["p1_tee"]}</span> &nbsp; Course hcp <b>{hcp1}</b>'
+                        + (f' · <b style="color:#1a7a3c">-{stk1} stroke{"s" if stk1!=1 else ""}</b>' if stk1 > 0 else ' · no stroke'),
+                        unsafe_allow_html=True
+                    )
+                    p1_no_score = st.checkbox("Picked up / no score", key=f"p1_pu_{h}",
+                                              value=(existing_g1 is None and status_now != "empty"))
+                    if not p1_no_score:
+                        g1 = st.number_input("Gross score", 1, 15,
+                                             value=int(existing_g1) if existing_g1 else par,
+                                             key=f"g1_{h}", label_visibility="collapsed")
+                        n1 = net_score(g1, hcp1, si1)
+                        st.caption(f"Net: **{n1}**")
+                    else:
+                        g1 = None
+                        st.caption("No score for this hole")
+
+                with c2:
+                    tee_info2 = _tee_info(course_data, team["p2_tee"])
+                    tee_color2 = tee_info2["color"]
+                    st.markdown(
+                        f'<b>{team["p2_name"]}</b> '
+                        f'<span style="background:{tee_color2};color:white;border-radius:4px;padding:1px 6px;font-size:0.75rem">'
+                        f'{team["p2_tee"]}</span> &nbsp; Course hcp <b>{hcp2}</b>'
+                        + (f' · <b style="color:#1a7a3c">-{stk2} stroke{"s" if stk2!=1 else ""}</b>' if stk2 > 0 else ' · no stroke'),
+                        unsafe_allow_html=True
+                    )
+                    p2_no_score = st.checkbox("Picked up / no score", key=f"p2_pu_{h}",
+                                              value=(existing_g2 is None and status_now != "empty"))
+                    if not p2_no_score:
+                        g2 = st.number_input("Gross score", 1, 15,
+                                             value=int(existing_g2) if existing_g2 else par,
+                                             key=f"g2_{h}", label_visibility="collapsed")
+                        n2 = net_score(g2, hcp2, si2)
+                        st.caption(f"Net: **{n2}**")
+                    else:
+                        g2 = None
+                        st.caption("No score for this hole")
+
+                nets = []
+                if g1 is not None:
+                    nets.append(net_score(g1, hcp1, si1))
+                if g2 is not None:
+                    nets.append(net_score(g2, hcp2, si2))
+                if nets:
+                    bb  = min(nets)
+                    vs  = bb - par
+                    vs_str = f"+{vs}" if vs > 0 else ("E" if vs == 0 else str(vs))
+                    st.info(f"Best Net Ball this hole: **{bb}** ({vs_str})")
+
+                if st.button("💾 Save Hole", type="primary"):
+                    upsert_score(rid, tid, 1, h, g1)
+                    upsert_score(rid, tid, 2, h, g2)
+                    if nets and min(nets) > par:
+                        st.error("🍺🍺🍺 **SHOTGUN TIME — YOU SUCK** 🍺🍺🍺")
+                    else:
+                        st.success(f"Hole {h} saved!")
+                    st.rerun()
 
     # ── Leaderboard ───────────────────────────────────────────────────────────
     with tab_board:
