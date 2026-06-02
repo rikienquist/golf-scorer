@@ -511,18 +511,27 @@ def build_wolf_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
     def result_row():
         cells = ""
         for h in range(1, 19):
-            dec = decisions.get(h, {})
-            d   = dec.get("decision")
+            dec        = decisions.get(h, {})
+            d          = dec.get("decision")
             partner_id = dec.get("partner_id")
-            net_scores_h = {}
+            carry      = (hole_carry or {}).get(h, 1)
+            net_scores_h  = {}
+            gross_scores_h = {}
+            hole_pars_h    = {}
             for p in players:
-                g = scores_lkp.get((p["id"], h))
-                if g is not None:
-                    ti = course_data["tees"].get(p["tee"], list(course_data["tees"].values())[0])
-                    si = course_data[ti["si_key"]][h - 1]
-                    net_scores_h[p["id"]] = net_score(g, course_hcps[p["id"]], si)
+                pid = p["id"]
+                g   = scores_lkp.get((pid, h))
+                ti  = course_data["tees"].get(p["tee"], list(course_data["tees"].values())[0])
+                si  = course_data[ti["si_key"]][h - 1]
+                pk  = ti.get("par_key", "par")
+                hole_pars_h[pid]    = course_data.get(pk, course_data["par"])[h - 1]
+                gross_scores_h[pid] = g
+                net_scores_h[pid]   = net_score(g, course_hcps[pid], si) if g is not None else None
             if d:
-                _, result = compute_hole_points(d, wolf_ids[h], partner_id, net_scores_h, all_ids)
+                _, result, _ = compute_hole_points(
+                    d, wolf_ids[h], partner_id,
+                    net_scores_h, gross_scores_h, hole_pars_h, all_ids, carry
+                )
                 icons = {"wolf_wins": "🐺", "others_win": "💪", "push": "🤝", "incomplete": ""}
                 txt = icons.get(result, "")
             else:
