@@ -8,7 +8,7 @@ from courses import (
 from database import (
     init_db, create_round, round_exists, get_round, finalize_round,
     add_team, get_teams, upsert_score, get_scores,
-    list_active_rounds, list_completed_rounds,
+    list_active_rounds, list_completed_rounds, delete_round,
     add_wolf_player, get_wolf_players, delete_wolf_players,
     upsert_wolf_score, get_wolf_scores,
     set_wolf_decision, clear_wolf_decision, get_wolf_decisions,
@@ -705,6 +705,19 @@ if page == "home":
                         else:
                             st.write("No teams.")
 
+                    # Admin delete for past rounds
+                    st.divider()
+                    with st.expander("🔒 Admin"):
+                        dpw = st.text_input("Admin password", type="password",
+                                            key=f"dpw_{r['id']}")
+                        if dpw == ADMIN_PASSWORD:
+                            if st.button(f"🗑️ Delete round {r['id']}", type="secondary",
+                                         key=f"del_{r['id']}"):
+                                delete_round(r["id"])
+                                st.rerun()
+                        elif dpw:
+                            st.error("Incorrect password.")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SETUP
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1092,6 +1105,12 @@ elif page == "score":
                         st.rerun()
                 else:
                     st.info("Round already finalised.")
+                st.divider()
+                st.warning("Danger zone")
+                if st.button("🗑️ Delete This Round", type="secondary", key="wolf_del"):
+                    delete_round(rid)
+                    st.query_params.clear()
+                    st.rerun()
             elif pw:
                 st.error("Incorrect password.")
 
@@ -1312,6 +1331,13 @@ elif page == "score":
             st.divider()
             if st.button("⚙️ Edit Teams / Add Team"):
                 go("setup", round=rid)
+
+            st.divider()
+            st.warning("Danger zone")
+            if st.button("🗑️ Delete This Round", type="secondary"):
+                delete_round(rid)
+                st.query_params.clear()
+                st.rerun()
         elif pw:
             st.error("Incorrect password.")
 
