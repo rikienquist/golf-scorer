@@ -1,5 +1,6 @@
 # ── Player roster (sorted lowest to highest handicap) ─────────────────────────
 PLAYERS = [
+    ("Reed", 11),
     ("Braeden", 12),
     ("Riki",    15),
     ("Kyle",    15),
@@ -12,15 +13,15 @@ PLAYERS = [
     ("Connor",  24),
     ("Tyler",   27),
     ("Kenzie",  27),
+    ("Rhett",  27),
     ("Kelso",  30),  
     ("Joel",  30),
     ("Gemma",  30),  
 ]
 
 # ── Course data ───────────────────────────────────────────────────────────────
-# Slope / Course Rating are estimates — confirm with Springbank Links pro shop.
-# SI = Stroke Index (handicap hole order). Slope/Rating determine how many
-# total strokes a player receives when adjusted for each tee box.
+# Slope / Course Rating
+# SI = Stroke Index (handicap hole order)
 
 COURSES = {
     "Woodside Golf Course": {
