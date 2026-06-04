@@ -1126,10 +1126,15 @@ elif page == "score":
         if rnd["status"] == "completed":
             st.warning("🏁 This round has been finalised — scores are locked. View results in the Leaderboard and Scorecard tabs.")
         else:
-            team_names = [t["team_name"] for t in teams]
-            sel_name   = st.selectbox("Your Team", team_names, key="team_sel")
-            team       = next(t for t in teams if t["team_name"] == sel_name)
-            tid        = team["id"]
+            team_names  = [t["team_name"] for t in teams]
+            # Restore last selected team across reruns so auth_key stays consistent
+            last_key    = f"sel_team_{rid}"
+            saved       = st.session_state.get(last_key, team_names[0])
+            default_idx = team_names.index(saved) if saved in team_names else 0
+            sel_name    = st.selectbox("Your Team", team_names, index=default_idx, key="team_sel")
+            st.session_state[last_key] = sel_name   # persist selection
+            team = next(t for t in teams if t["team_name"] == sel_name)
+            tid  = team["id"]
 
             # ── Team name gate ────────────────────────────────────────────────
             auth_key = f"auth_{rid}_{tid}"
