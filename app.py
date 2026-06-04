@@ -33,7 +33,18 @@ st.markdown("""
 <style>
     .stButton > button { min-height: 48px; font-size: 1rem; width: 100%; }
     .stSelectbox > div, .stNumberInput > div { font-size: 1rem; }
-    div[data-testid="column"] .stNumberInput input { font-size:1.4rem; text-align:center; }
+    /* Large score inputs */
+    div[data-testid="stNumberInput"] input {
+        font-size: 2.4rem !important;
+        font-weight: bold !important;
+        text-align: center !important;
+        height: 64px !important;
+    }
+    div[data-testid="stNumberInput"] button {
+        font-size: 1.6rem !important;
+        width: 52px !important;
+        height: 64px !important;
+    }
 
     /* Leaderboard */
     .lb-table { width:100%; border-collapse:collapse; font-size:0.9rem; }
@@ -952,6 +963,7 @@ elif page == "score":
                     partner_id = dec.get("partner_id")
 
                     # Wolf header
+                    st.markdown(f"## Hole {h}")
                     st.markdown(f"**Par {par_h}** &nbsp;·&nbsp; "
                                 f"🐺 Wolf: **{wolf_p['player_name']}**")
 
@@ -1214,7 +1226,8 @@ elif page == "score":
                 stk1  = strokes_on_hole(hcp1, si1)
                 stk2  = strokes_on_hole(hcp2, si2)
 
-                st.markdown(f"**Par {par}** &nbsp;·&nbsp; Hole SI — {team['p1_name']}: {si1} / {team['p2_name']}: {si2}")
+                st.markdown(f"## Hole {h}")
+                st.markdown(f"**Par {par}** &nbsp;·&nbsp; SI — {team['p1_name']}: {si1} / {team['p2_name']}: {si2}")
 
                 st.divider()
                 c1, c2 = st.columns(2)
