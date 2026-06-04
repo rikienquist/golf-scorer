@@ -273,6 +273,16 @@ def get_scores(round_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def delete_round(rid: str):
+    """Delete a round and all associated data."""
+    conn = get_conn()
+    for tbl in ("wolf_decisions", "wolf_scores", "wolf_players",
+                "scores", "teams", "rounds"):
+        conn.execute(f"DELETE FROM {tbl} WHERE {'round_id' if tbl != 'rounds' else 'id'}=?", (rid,))
+    conn.commit()
+    conn.close()
+
+
 def list_active_rounds() -> list[dict]:
     conn = get_conn()
     rows = conn.execute(
