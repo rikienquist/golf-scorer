@@ -6,12 +6,15 @@ PLAYERS = [
     ("Jake",    16),
     ("Ben",     17),
     ("Aidan",   20),
-    ("Ryan",    20),
+    ("Ryan",    22),
     ("Broden",  24),
     ("Sean",    24),
+    ("Connor",  24),
     ("Tyler",   27),
     ("Kenzie",  27),
-    ("Kelso",  27),    
+    ("Kelso",  27),  
+    ("Joel",  30),
+    ("Gemma",  30),  
 ]
 
 # ── Course data ───────────────────────────────────────────────────────────────
@@ -28,12 +31,12 @@ COURSES = {
         "si_mens":   [13, 1, 11, 3, 15, 7, 17, 9, 5,  16, 2, 14, 6, 18, 12, 10, 4, 8],
         "si_ladies": [13, 3, 15, 7,  9, 5, 17,11, 1,  16, 6, 14, 2, 18, 12,  8, 4,10],
         "tees": {
-            "Black":        {"color": "#222222", "text": "white", "slope": 132, "rating": 70.5, "si_key": "si_mens",   "par_key": "par"},
-            "Blue":         {"color": "#1a3a8a", "text": "white", "slope": 128, "rating": 68.8, "si_key": "si_mens",   "par_key": "par"},
-            "Blue|White":   {"color": "#4a6fa5", "text": "white", "slope": 123, "rating": 67.1, "si_key": "si_mens",   "par_key": "par"},
-            "White":        {"color": "#f0f0f0", "text": "black", "slope": 118, "rating": 65.4, "si_key": "si_mens",   "par_key": "par"},
-            "White|Silver": {"color": "#b0b0b0", "text": "white", "slope": 112, "rating": 63.2, "si_key": "si_ladies", "par_key": "par_ladies"},
-            "Silver":       {"color": "#888888", "text": "white", "slope": 106, "rating": 60.8, "si_key": "si_ladies", "par_key": "par_ladies"},
+            "Black":        {"color": "#222222", "text": "white", "slope": 122, "rating": 68.9, "si_key": "si_mens",   "par_key": "par"},
+            "Blue":         {"color": "#1a3a8a", "text": "white", "slope": 117, "rating": 67.3, "si_key": "si_mens",   "par_key": "par"},
+            "Blue|White":   {"color": "#4a6fa5", "text": "white", "slope": 114, "rating": 67.3, "si_key": "si_mens",   "par_key": "par"},
+            "White":        {"color": "#f0f0f0", "text": "black", "slope": 110, "rating": 64.8, "si_key": "si_mens",   "par_key": "par"},
+            "White|Silver": {"color": "#b0b0b0", "text": "white", "slope": 120, "rating": 67, "si_key": "si_ladies", "par_key": "par_ladies"},
+            "Silver":       {"color": "#888888", "text": "white", "slope": 110, "rating": 63.6, "si_key": "si_ladies", "par_key": "par_ladies"},
         },
     },
     "Springbank Links": {
@@ -42,13 +45,13 @@ COURSES = {
         "si_mens":   [11, 7, 5, 15, 13, 1, 3, 17, 9,  16, 4, 8, 12, 2, 18, 14, 10, 6],
         "si_ladies": [11, 5, 7, 15, 13, 1, 3, 17, 9,  14, 6, 10, 12, 2, 18, 16,  8, 4],
         "tees": {
-            "Emerald":            {"color": "#2d5a27", "text": "white", "slope": 133, "rating": 72.1, "si_key": "si_mens",   "par_key": "par"},
-            "Blue":               {"color": "#1a3a8a", "text": "white", "slope": 128, "rating": 70.4, "si_key": "si_mens",   "par_key": "par"},
-            "Blue/Silver":        {"color": "#4a6fa5", "text": "white", "slope": 122, "rating": 68.5, "si_key": "si_mens",   "par_key": "par"},
-            "Silver":             {"color": "#888888", "text": "white", "slope": 117, "rating": 66.8, "si_key": "si_mens",   "par_key": "par"},
-            "Silver/Gold Senior": {"color": "#b8a040", "text": "white", "slope": 113, "rating": 65.3, "si_key": "si_mens",   "par_key": "par"},
-            "Gold":               {"color": "#c8a000", "text": "white", "slope": 107, "rating": 63.0, "si_key": "si_ladies", "par_key": "par"},
-            "Red":                {"color": "#c83020", "text": "white", "slope": 101, "rating": 60.5, "si_key": "si_ladies", "par_key": "par"},
+            "Emerald":            {"color": "#2d5a27", "text": "white", "slope": 129, "rating": 71.6, "si_key": "si_mens",   "par_key": "par"},
+            "Blue":               {"color": "#1a3a8a", "text": "white", "slope": 127, "rating": 69.8, "si_key": "si_mens",   "par_key": "par"},
+            "Blue/Silver":        {"color": "#4a6fa5", "text": "white", "slope": 123, "rating": 67.8, "si_key": "si_mens",   "par_key": "par"},
+            "Silver":             {"color": "#888888", "text": "white", "slope": 120, "rating": 66.2, "si_key": "si_mens",   "par_key": "par"},
+            "Silver/Gold Senior": {"color": "#b8a040", "text": "white", "slope": 115, "rating": 64.6, "si_key": "si_mens",   "par_key": "par"},
+            "Gold":               {"color": "#c8a000", "text": "white", "slope": 119, "rating": 68.0, "si_key": "si_ladies", "par_key": "par"},
+            "Red":                {"color": "#c83020", "text": "white", "slope": 111, "rating": 65.1, "si_key": "si_ladies", "par_key": "par"},
         },
     }
 }
