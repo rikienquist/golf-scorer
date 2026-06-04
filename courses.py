@@ -12,7 +12,7 @@ PLAYERS = [
     ("Connor",  24),
     ("Tyler",   27),
     ("Kenzie",  27),
-    ("Kelso",  27),  
+    ("Kelso",  30),  
     ("Joel",  30),
     ("Gemma",  30),  
 ]
