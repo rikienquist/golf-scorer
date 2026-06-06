@@ -143,6 +143,10 @@ def compute_standings(players: list, scores_lkp: dict, decisions: dict, course_d
         ti = course_data["tees"].get(p["tee"], list(course_data["tees"].values())[0])
         course_hcps[p["id"]] = course_handicap(p["handicap"], ti["slope"], ti["rating"], par_total)
 
+    # Zero down the lowest handicap so strokes are relative (WHS stroke play off lowest)
+    min_hcp  = min(course_hcps.values()) if course_hcps else 0
+    adj_hcps = {pid: course_hcps[pid] - min_hcp for pid in all_ids}
+
     cumulative  = {pid: 0 for pid in all_ids}
     hole_pts    = {}
     hole_carry  = {}
@@ -168,7 +172,7 @@ def compute_standings(players: list, scores_lkp: dict, decisions: dict, course_d
             pk    = ti.get("par_key", "par")
             par_h[pid] = course_data.get(pk, course_data["par"])[h - 1]
             gross_h[pid] = gross
-            net_h[pid]   = net_score(gross, course_hcps[pid], si) if gross is not None else None
+            net_h[pid]   = net_score(gross, adj_hcps[pid], si) if gross is not None else None
 
         if decision:
             pts, result, carry_mult = compute_hole_points(
