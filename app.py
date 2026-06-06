@@ -480,6 +480,8 @@ def build_wolf_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
 
     # Course handicaps
     course_hcps = {p["id"]: _wolf_course_hcp(p, course_data) for p in players}
+    min_hcp_w   = min(course_hcps.values()) if course_hcps else 0
+    adj_hcps    = {pid: course_hcps[pid] - min_hcp_w for pid in course_hcps}
 
     # Determine wolf per hole
     wolf_ids = {}
@@ -537,7 +539,7 @@ def build_wolf_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
                 pk  = ti.get("par_key", "par")
                 hole_pars_h[pid]    = course_data.get(pk, course_data["par"])[h - 1]
                 gross_scores_h[pid] = g
-                net_scores_h[pid]   = net_score(g, course_hcps[pid], si) if g is not None else None
+                net_scores_h[pid]   = net_score(g, adj_hcps[pid], si) if g is not None else None
             if d:
                 _, result, _ = compute_hole_points(
                     d, wolf_ids[h], partner_id,
@@ -560,7 +562,8 @@ def build_wolf_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
         si_key  = ti["si_key"]
         par_key = ti.get("par_key", "par")
         tee_pars = course_data.get(par_key, pars)
-        hcp = course_hcps[pid]
+        hcp     = course_hcps[pid]
+        adj_hcp = adj_hcps[pid]
 
         gross_cells = ""
         net_cells   = ""
@@ -573,9 +576,9 @@ def build_wolf_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
             gross = scores_lkp.get((pid, h))
             par_h = tee_pars[h - 1]
             si    = course_data[si_key][h - 1]
-            stk   = strokes_on_hole(hcp, si)
+            stk   = strokes_on_hole(adj_hcp, si)
             is_wolf_h = (wolf_ids[h] == pid)
-            ns = net_score(gross, hcp, si) if gross is not None else None
+            ns = net_score(gross, adj_hcp, si) if gross is not None else None
             pts_h = hole_pts.get(h, {}).get(pid, 0)
 
             gross_cells += wolf_gross_cell(gross, par_h, stk, is_wolf_h)
@@ -610,7 +613,7 @@ def build_wolf_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
         name_label = (f'{p["player_name"]} '
                       f'<span style="background:{tee_color};color:white;border-radius:3px;'
                       f'padding:0 4px;font-size:0.7rem">{p["tee"]}</span> '
-                      f'<span style="font-size:0.7rem;color:#666">hcp {hcp}</span>')
+                      f'<span style="font-size:0.7rem;color:#666">comp hcp {adj_hcp}</span>')
 
         player_rows_html += (
             f'<tr><td class="row-label">{name_label} Gross</td>{gross_cells}</tr>'
@@ -767,17 +770,19 @@ elif page == "setup":
             st.caption("The order determines who is wolf on each hole: Order 1 → holes 1,5,9,13 · Order 2 → 2,6,10,14 · etc.")
 
             with st.form("wolf_setup"):
-                cols = st.columns(2)
                 sel, tees = [], []
                 labels = ["1st Wolf (holes 1,5,9,13)", "2nd Wolf (holes 2,6,10,14)",
                           "3rd Wolf (holes 3,7,11,15)", "4th Wolf (holes 4,8,12,16)"]
-                for i, label in enumerate(labels):
-                    with cols[i % 2]:
-                        st.markdown(f"**{label}**")
-                        s = st.selectbox("Player", player_options, key=f"ws_{i}",
-                                         index=min(i, len(player_options)-1))
-                        t = st.selectbox("Tee", tee_names, index=1, key=f"wt_{i}")
-                        sel.append(s); tees.append(t)
+                for row_start in range(0, 4, 2):
+                    cols = st.columns(2)
+                    for j in range(2):
+                        i = row_start + j
+                        with cols[j]:
+                            st.markdown(f"**{labels[i]}**")
+                            s = st.selectbox("Player", player_options, key=f"ws_{i}",
+                                             index=min(i, len(player_options)-1))
+                            t = st.selectbox("Tee", tee_names, index=1, key=f"wt_{i}")
+                            sel.append(s); tees.append(t)
 
                 # Preview course handicaps
                 preview = []
@@ -912,24 +917,7 @@ elif page == "score":
             if rnd["status"] == "completed":
                 st.warning("🏁 Round finalised — view results in Leaderboard and Scorecard tabs.")
             else:
-                # Auth: enter any player name OR admin password
-                wolf_auth_key = f"wolf_auth_{rid}"
-                if not st.session_state.get(wolf_auth_key, False):
-                    st.info("Enter your name (or admin password) to enter scores.")
-                    ca, cb = st.columns([3, 1])
-                    with ca:
-                        entered = st.text_input("Your name", key="wolf_auth_input",
-                                                placeholder="e.g. Riki")
-                    with cb:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("Unlock", type="primary", key="wolf_auth_btn"):
-                            valid_names = {p["player_name"].lower() for p in wolf_players}
-                            if entered.lower() in valid_names or entered == ADMIN_PASSWORD:
-                                st.session_state[wolf_auth_key] = True
-                                st.rerun()
-                            else:
-                                st.error("Name not recognised.")
-                else:
+                if True:  # auth removed — no password needed
                     # Hole status grid
                     def wolf_hole_status(h):
                         scored = sum(1 for p in wolf_players if wolf_scores.get((p["id"], h)) is not None)
@@ -1009,12 +997,14 @@ elif page == "score":
                     gross_vals = {}
                     picked_up  = {}
                     course_hcps = {p["id"]: _wolf_course_hcp(p, course_data) for p in wolf_players}
+                    min_hcp_w   = min(course_hcps.values()) if course_hcps else 0
+                    adj_hcps    = {pid: course_hcps[pid] - min_hcp_w for pid in course_hcps}
 
                     for p in wolf_players:
                         pid  = p["id"]
                         ti   = _tee_info(course_data, p["tee"])
                         si   = course_data[ti["si_key"]][h - 1]
-                        stk  = strokes_on_hole(course_hcps[pid], si)
+                        stk  = strokes_on_hole(adj_hcps[pid], si)
                         is_w = (wolf_p["id"] == pid)
                         existing_g = wolf_scores.get((pid, h))
 
@@ -1027,7 +1017,7 @@ elif page == "score":
                             st.markdown(
                                 f'{wolf_icon}<b>{p["player_name"]}</b> '
                                 f'<span style="background:{tee_color};color:white;border-radius:3px;padding:0 5px;font-size:0.75rem">'
-                                f'{p["tee"]}</span> hcp <b>{course_hcps[pid]}</b>{stroke_txt}',
+                                f'{p["tee"]}</span> comp hcp <b>{adj_hcps[pid]}</b>{stroke_txt}',
                                 unsafe_allow_html=True
                             )
                         with cb:
@@ -1038,7 +1028,7 @@ elif page == "score":
                                 g = st.number_input("Gross", 1, 15,
                                                     value=int(existing_g) if existing_g else par_h,
                                                     key=f"wg_{h}_{pid}", label_visibility="collapsed")
-                                ns = net_score(g, course_hcps[pid], si)
+                                ns = net_score(g, adj_hcps[pid], si)
                                 st.caption(f"Net: **{ns}**")
                                 gross_vals[pid] = g
                             else:
@@ -1059,7 +1049,7 @@ elif page == "score":
                             si = course_data[ti["si_key"]][h - 1]
                             pk = ti.get("par_key", "par")
                             hole_pars_now[p["id"]] = course_data.get(pk, course_data["par"])[h - 1]
-                            net_scores_now[p["id"]] = net_score(g, course_hcps[p["id"]], si) if g is not None else None
+                            net_scores_now[p["id"]] = net_score(g, adj_hcps[p["id"]], si) if g is not None else None
 
                         pts_preview, result, _ = compute_hole_points(
                             decision, wolf_p["id"], partner_id,
@@ -1167,24 +1157,7 @@ elif page == "score":
             team = next(t for t in teams if t["team_name"] == sel_name)
             tid  = team["id"]
 
-            # ── Team name gate ────────────────────────────────────────────────
-            auth_key = f"auth_{rid}_{tid}"
-            if not st.session_state.get(auth_key, False):
-                st.info(f"Enter your **team name** to edit scores for **{sel_name}**.")
-                pin_col, btn_col = st.columns([3, 1])
-                with pin_col:
-                    entered = st.text_input("Team Name", max_chars=50, key=f"pin_input_{tid}",
-                                            placeholder="Your team name (case-insensitive)")
-                with btn_col:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("Unlock", key=f"pin_btn_{tid}", type="primary"):
-                        if entered.lower() == team["team_name"].lower() or entered == ADMIN_PASSWORD:
-                            st.session_state[auth_key] = True
-                            st.rerun()
-                        else:
-                            st.error("Team name didn't match — check spelling.")
-            else:
-                st.caption(f"🔓 Editing scores for **{sel_name}**")
+            if True:  # auth removed — no password needed
 
                 hcp1 = _player_course_hcp(team, 1, course_data)
                 hcp2 = _player_course_hcp(team, 2, course_data)
