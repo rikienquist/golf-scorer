@@ -1,11 +1,12 @@
 # ── Player roster (sorted lowest to highest handicap) ─────────────────────────
 PLAYERS = [
+    ("Jadan", 2),
     ("Reed", 11),
     ("Braeden", 12),
-    ("Riki",    15),
-    ("Kyle",    15),
-    ("Jake",    16),
-    ("Ben",     19),
+    ("Riki",    14),
+    ("Kyle",    14),
+    ("Jake",    15),
+    ("Ben",     17),
     ("Aidan",   20),
     ("Ryan",    22),
     ("Broden",  24),
