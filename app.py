@@ -981,6 +981,11 @@ elif page == "score":
                                 st.rerun()
                         with d3:
                             others = [p for p in wolf_players if p["id"] != wolf_p["id"]]
+                            if h == 18:
+                                # Hole 18: wolf cannot pick the hole-17 wolf (last place) as partner
+                                h17_wolf = wolf_for_hole(wolf_players, 17, cum16)
+                                others = [p for p in others if p["id"] != h17_wolf["id"]]
+                                st.caption(f"⚠️ {h17_wolf['player_name']} not available (was H17 wolf)")
                             partner_sel = st.selectbox(
                                 "🤝 Pick Partner", ["— pick —"] + [p["player_name"] for p in others],
                                 key=f"partner_sel_{h}", label_visibility="collapsed"
@@ -1065,7 +1070,7 @@ elif page == "score":
                         elif result == "others_win":
                             st.warning(f"Preview: {label} — {winners}")
                         elif result == "push":
-                            next_carry = current_carry * 2
+                            next_carry = min(current_carry * 2, 2)
                             st.info(f"Preview: {label} — next hole carries at **×{next_carry}**")
 
                     if st.button("💾 Save Hole", type="primary", key=f"save_wolf_{h}"):
