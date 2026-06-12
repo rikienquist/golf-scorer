@@ -89,7 +89,11 @@ def compute_hole_points(
                 points[pid] = base_lose * carry_mult * sm
             return points, "others_win", 1
         else:
-            return points, "push", 2  # carry is always ×2 max, regardless of consecutive pushes
+            # Push — carry over, but birdie-makers still earn their base single points
+            for pid in all_ids:
+                if _score_mult(pid, gross_scores, hole_pars) >= 2:
+                    points[pid] = base_win if pid == wolf_id else base_lose
+            return points, "push", 2
 
     elif decision == "partner" and partner_id is not None:
         wolf_team  = {pid for pid in (wolf_id, partner_id) if pid in scored}
@@ -111,7 +115,11 @@ def compute_hole_points(
                 points[pid] = 3 * carry_mult * sm
             return points, "others_win", 1
         else:
-            return points, "push", 2  # carry is always ×2 max, regardless of consecutive pushes
+            # Push — carry over, but birdie-makers still earn their base single points
+            for pid in all_ids:
+                if _score_mult(pid, gross_scores, hole_pars) >= 2:
+                    points[pid] = 2 if pid in (wolf_id, partner_id) else 3
+            return points, "push", 2
 
     return points, "incomplete", carry_mult
 
