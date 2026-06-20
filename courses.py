@@ -1,12 +1,13 @@
 # ── Player roster (sorted lowest to highest handicap) ─────────────────────────
 PLAYERS = [
     ("Jadan", 2),
+    ("Caleb", 6),
     ("Reed", 11),
     ("Braeden", 12),
     ("Riki",    14),
     ("Kyle",    14),
     ("Jake",    15),
-    ("Ben",     17),
+    ("Ben",     18),
     ("Aidan",   20),
     ("Ryan",    22),
     ("Broden",  24),
@@ -25,6 +26,22 @@ PLAYERS = [
 # SI = Stroke Index (handicap hole order)
 
 COURSES = {
+    "Water Valley Golf Course": {
+        "holes": 18,
+        "par":      [4, 3, 4, 5, 4, 4, 5, 4, 3,   4, 4, 4, 3, 5, 4, 3, 4, 5],
+        "si_mens":  [1, 17, 15, 3, 9, 7, 13, 5, 11,  14, 18, 2, 10, 6, 16, 12, 8, 4],
+        "si_ladies":[1, 17, 15, 9, 11, 3, 7, 5, 13,   8, 10, 6, 14, 12, 18, 16, 2, 4],
+        "tees": {
+            "Black":          {"color": "#222222", "text": "white", "slope": 133, "rating": 72.7, "si_key": "si_mens",   "par_key": "par"},
+            "Blue":           {"color": "#1a3a8a", "text": "white", "slope": 128, "rating": 71.1, "si_key": "si_mens",   "par_key": "par"},
+            "Blue/White":     {"color": "#4a6fa5", "text": "white", "slope": 126, "rating": 70.3, "si_key": "si_mens",   "par_key": "par"},
+            "White":          {"color": "#f0f0f0", "text": "black", "slope": 124, "rating": 69.6, "si_key": "si_mens",   "par_key": "par"},
+            "Silver":         {"color": "#888888", "text": "white", "slope": 117, "rating": 65.3, "si_key": "si_ladies", "par_key": "par"},
+            "Blue/White (L)": {"color": "#4a6fa5", "text": "white", "slope": 142, "rating": 76.3, "si_key": "si_ladies", "par_key": "par"},
+            "White (L)":      {"color": "#f0f0f0", "text": "black", "slope": 138, "rating": 74.0, "si_key": "si_ladies", "par_key": "par"},
+            "Silver (L)":     {"color": "#888888", "text": "white", "slope": 128, "rating": 70.1, "si_key": "si_ladies", "par_key": "par"},
+        },
+    },
     "Woodside Golf Course": {
         "holes": 18,
         # Hole 4 is par 4 (men) / par 5 (ladies) — using men's par here
