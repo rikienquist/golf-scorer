@@ -8,14 +8,17 @@ PLAYERS = [
     ("Kyle",    14),
     ("Jake",    15),
     ("Ben",     18),
+    ("Jordan Abel", 18),
     ("Aidan",   21),
     ("Kenzie",  21),
     ("Ryan",    22),
     ("Broden",  24),
     ("Sean",    24),
     ("Connor",  24),
+    ("Jordan Blake",   24),
     ("Tyler",   27),
     ("Rhett",  27),
+    ("Cameron",  30),
     ("Kelso",  30),  
     ("Joel",  30),
     ("Gemma",  30),  
@@ -26,6 +29,19 @@ PLAYERS = [
 # SI = Stroke Index (handicap hole order)
 
 COURSES = {
+    "Applecreek Golf Course": {
+        "holes": 18,
+        "par":     [5, 3, 4, 5, 4, 3, 5, 4, 4,   4, 4, 5, 3, 4, 3, 4, 4, 4],
+        "si_mens": [6, 16, 14, 2, 8, 18, 4, 10, 12,   5, 3, 1, 17, 13, 15, 11, 9, 7],
+        "tees": {
+            "Black":    {"color": "#222222", "text": "white", "slope": 138, "rating": 72.5, "si_key": "si_mens", "par_key": "par"},
+            "Blue":     {"color": "#1a3a8a", "text": "white", "slope": 133, "rating": 70.5, "si_key": "si_mens", "par_key": "par"},
+            "Combo":    {"color": "#4a6fa5", "text": "white", "slope": 127, "rating": 68.7, "si_key": "si_mens", "par_key": "par"},
+            "White":    {"color": "#f0f0f0", "text": "black", "slope": 119, "rating": 66.4, "si_key": "si_mens", "par_key": "par"},
+            "White (L)":{"color": "#f0f0f0", "text": "black", "slope": 129, "rating": 72.2, "si_key": "si_mens", "par_key": "par"},
+            "Red":      {"color": "#c83020", "text": "white", "slope": 113, "rating": 67.5, "si_key": "si_mens", "par_key": "par"},
+        },
+    },
     "Water Valley Golf Course": {
         "holes": 18,
         "par":      [4, 3, 4, 5, 4, 4, 5, 4, 3,   4, 4, 4, 3, 5, 4, 3, 4, 5],
