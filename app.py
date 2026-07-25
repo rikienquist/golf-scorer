@@ -107,6 +107,14 @@ def _player_course_hcp(team: dict, player_num: int, course_data: dict) -> int:
     return course_handicap(idx, ti["slope"], ti["rating"], par)
 
 
+def _scramble_course_hcp(team: dict, course_data: dict) -> int:
+    """60% of the lower course hcp + 40% of the higher course hcp, rounded."""
+    hcp1 = _player_course_hcp(team, 1, course_data)
+    hcp2 = _player_course_hcp(team, 2, course_data)
+    lo, hi = min(hcp1, hcp2), max(hcp1, hcp2)
+    return round(0.60 * lo + 0.40 * hi)
+
+
 def _si_for_player(team: dict, player_num: int, course_data: dict, hole_idx: int) -> int:
     tee = team["p1_tee"] if player_num == 1 else team["p2_tee"]
     si_key = _tee_info(course_data, tee)["si_key"]
@@ -419,6 +427,134 @@ def build_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
     return html
 
 
+# ── Scramble helpers ──────────────────────────────────────────────────────────
+
+def compute_scramble_leaderboard(round_id: str, course_data: dict) -> pd.DataFrame:
+    teams = get_teams(round_id)
+    all_scores = get_scores(round_id)
+    lkp = build_score_lookup(all_scores)
+    rows = []
+    for team in teams:
+        tid = team["id"]
+        shcp = _scramble_course_hcp(team, course_data)
+        pars = _par_for_tee(course_data, team["p1_tee"])
+        ti = _tee_info(course_data, team["p1_tee"])
+        si_key = ti["si_key"]
+        total_net = 0; par_played = 0; holes_counted = 0
+        for h in range(1, 19):
+            g = lkp.get((tid, 1, h))
+            if g is None:
+                continue
+            holes_counted += 1
+            si = course_data[si_key][h - 1]
+            total_net += net_score(g, shcp, si)
+            par_played += pars[h - 1]
+        if holes_counted == 0:
+            vs_par_str = "—"; total_str = "—"; sort_key = 9999
+        else:
+            diff = total_net - par_played
+            vs_par_str = f"+{diff}" if diff > 0 else ("E" if diff == 0 else str(diff))
+            total_str = str(total_net); sort_key = diff
+        rows.append({
+            "Pos": "", "Team": team["team_name"],
+            "Players": f"{team['p1_name']} / {team['p2_name']}",
+            "Hcp": shcp,
+            "Thru": holes_counted if holes_counted > 0 else "—",
+            "Net Tot": total_str, "vs Par": vs_par_str, "_sort": sort_key,
+        })
+    if not rows:
+        return pd.DataFrame()
+    df = (pd.DataFrame(rows).sort_values("_sort").drop(columns="_sort").reset_index(drop=True))
+    df["Pos"] = range(1, len(df) + 1)
+    return df
+
+
+def build_scramble_scorecard_html(round_id: str, team: dict, course_data: dict) -> str:
+    pars = _par_for_tee(course_data, team["p1_tee"])
+    ti = _tee_info(course_data, team["p1_tee"])
+    si_key = ti["si_key"]
+    shcp = _scramble_course_hcp(team, course_data)
+    lkp = build_score_lookup(get_scores(round_id))
+    tid = team["id"]
+
+    holes_data = []
+    for h in range(1, 19):
+        par = pars[h - 1]
+        si = course_data[si_key][h - 1]
+        gross = lkp.get((tid, 1, h))
+        stk = strokes_on_hole(shcp, si)
+        net = net_score(gross, shcp, si) if gross is not None else None
+        vs = (net - par) if net is not None else None
+        holes_data.append(dict(par=par, si=si, gross=gross, stk=stk, net=net, vs=vs))
+
+    front = holes_data[:9]; back = holes_data[9:]
+    par_out = sum(d["par"] for d in front); par_in = sum(d["par"] for d in back)
+
+    def sub(lst):
+        v = [x for x in lst if x is not None]; return sum(v) if v else None
+
+    def vs_cell(val):
+        if val is None: return '<td style="color:#aaa">—</td>'
+        txt = f"+{val}" if val > 0 else ("E" if val == 0 else str(val))
+        cls = "vspar-pos" if val > 0 else ("vspar-neg" if val < 0 else "vspar-e")
+        return f'<td class="{cls}">{txt}</td>'
+
+    def sc(val, par, stk=0):
+        if val is None: return '<td style="color:#aaa">—</td>'
+        return f'<td style="text-align:center">{score_cell_html(val, par, stk)}</td>'
+
+    def mk_row(vals_f, vals_b, pars_f, pars_b, stks_f=None, stks_b=None, symbols=False):
+        cells = ""
+        for i, (v, p) in enumerate(zip(vals_f, pars_f)):
+            s = stks_f[i] if stks_f else 0
+            cells += sc(v, p, s) if symbols else (f'<td>{v}</td>' if v is not None else '<td style="color:#aaa">—</td>')
+        out = sub(vals_f); inp = sub(vals_b); tot = sub([out, inp])
+        cells += f'<td class="subtotal">{out if out is not None else "—"}</td>'
+        for i, (v, p) in enumerate(zip(vals_b, pars_b)):
+            s = stks_b[i] if stks_b else 0
+            cells += sc(v, p, s) if symbols else (f'<td>{v}</td>' if v is not None else '<td style="color:#aaa">—</td>')
+        cells += f'<td class="subtotal">{inp if inp is not None else "—"}</td>'
+        cells += f'<td class="subtotal">{tot if tot is not None else "—"}</td>'
+        return cells
+
+    hdr = ("".join(f'<th>{i}</th>' for i in range(1, 10)) + '<th>OUT</th>' +
+           "".join(f'<th>{i}</th>' for i in range(10, 19)) + '<th>IN</th><th>TOT</th>')
+    par_cells = (
+        "".join(f'<td>{d["par"]}</td>' for d in front) +
+        f'<td class="subtotal">{par_out}</td>' +
+        "".join(f'<td>{d["par"]}</td>' for d in back) +
+        f'<td class="subtotal">{par_in}</td><td class="subtotal">{par_out+par_in}</td>'
+    )
+    si_cells = (
+        "".join(f'<td style="color:#888;font-size:0.75rem">{d["si"]}</td>' for d in front) +
+        '<td class="subtotal">—</td>' +
+        "".join(f'<td style="color:#888;font-size:0.75rem">{d["si"]}</td>' for d in back) +
+        '<td class="subtotal">—</td><td class="subtotal">—</td>'
+    )
+    gf = [d["gross"] for d in front]; gb = [d["gross"] for d in back]
+    nf = [d["net"]   for d in front]; nb = [d["net"]   for d in back]
+    pf = [d["par"]   for d in front]; pb = [d["par"]   for d in back]
+    sf = [d["stk"]   for d in front]; sb = [d["stk"]   for d in back]
+    vs_out = sub([d["vs"] for d in front if d["vs"] is not None])
+    vs_in  = sub([d["vs"] for d in back  if d["vs"] is not None])
+    vs_tot = sub([v for v in [vs_out, vs_in] if v is not None])
+    vs_cells = (
+        "".join(vs_cell(d["vs"]) for d in front) + vs_cell(vs_out) +
+        "".join(vs_cell(d["vs"]) for d in back)  + vs_cell(vs_in) + vs_cell(vs_tot)
+    )
+    return (
+        '<div style="overflow-x:auto"><table class="sc-table">'
+        f'<thead><tr><th class="row-label">Hole</th>{hdr}</tr></thead><tbody>'
+        f'<tr><td class="row-label">Par</td>{par_cells}</tr>'
+        f'<tr><td class="row-label">SI</td>{si_cells}</tr>'
+        f'<tr><td class="row-label">Gross (team hcp {shcp})</td>'
+        f'{mk_row(gf, gb, pf, pb, sf, sb, symbols=True)}</tr>'
+        f'<tr><td class="row-label">Net</td>{mk_row(nf, nb, pf, pb, symbols=True)}</tr>'
+        f'<tr><td class="row-label">vs Par</td>{vs_cells}</tr>'
+        '</tbody></table></div>'
+    )
+
+
 # ── Wolf helpers ─────────────────────────────────────────────────────────────
 
 def _wolf_course_hcp(player: dict, course_data: dict) -> int:
@@ -684,9 +820,7 @@ if page == "home":
                 label = f"🏁 {r['id']} — {r['course']}  ·  {r['created_at'][:10]}"
                 with st.expander(label):
                     cd = COURSES[r["course"]]
-                    lb = compute_leaderboard(r["id"], cd)
                     if r["format"] == "Wolf":
-                        # Wolf past round
                         wp = get_wolf_players(r["id"])
                         ws = get_wolf_scores(r["id"])
                         wd = get_wolf_decisions(r["id"])
@@ -700,7 +834,27 @@ if page == "home":
                                         unsafe_allow_html=True)
                         else:
                             st.write("No players recorded.")
+                    elif r["format"] == "2-Man Scramble":
+                        st.subheader("🏆 Final Leaderboard")
+                        lb_sc = compute_scramble_leaderboard(r["id"], cd)
+                        if lb_sc.empty:
+                            st.write("No scores recorded.")
+                        else:
+                            st.markdown(lb_sc.to_html(index=False, classes="lb-table", border=0),
+                                        unsafe_allow_html=True)
+                        st.divider()
+                        st.subheader("📋 Scorecards")
+                        past_teams = get_teams(r["id"])
+                        if past_teams:
+                            sel = st.selectbox("Team", [t["team_name"] for t in past_teams],
+                                               key=f"past_team_{r['id']}")
+                            pt = next(t for t in past_teams if t["team_name"] == sel)
+                            st.markdown(build_scramble_scorecard_html(r["id"], pt, cd),
+                                        unsafe_allow_html=True)
+                        else:
+                            st.write("No teams.")
                     else:
+                        lb = compute_leaderboard(r["id"], cd)
                         st.subheader("🏆 Final Leaderboard")
                         if lb.empty:
                             st.write("No scores recorded.")
@@ -848,8 +1002,14 @@ elif page == "setup":
         par = sum(course_data["par"])
         chcp1 = course_handicap(p1_idx, ti1["slope"], ti1["rating"], par)
         chcp2 = course_handicap(p2_idx, ti2["slope"], ti2["rating"], par)
-        st.info(f"Slope-adjusted course handicaps: **{p1_sel.split('(')[0].strip()} → {chcp1}** · "
-                f"**{p2_sel.split('(')[0].strip()} → {chcp2}**")
+        if rnd["format"] == "2-Man Scramble":
+            lo, hi = min(chcp1, chcp2), max(chcp1, chcp2)
+            shcp = round(0.60 * lo + 0.40 * hi)
+            st.info(f"Scramble team handicap: **{shcp}** "
+                    f"(60% of {lo} + 40% of {hi})")
+        else:
+            st.info(f"Slope-adjusted course handicaps: **{p1_sel.split('(')[0].strip()} → {chcp1}** · "
+                    f"**{p2_sel.split('(')[0].strip()} → {chcp2}**")
 
         submitted = st.form_submit_button("Add Team", type="primary")
         if submitted:
@@ -1127,6 +1287,141 @@ elif page == "score":
             if st.button("⚙️ Edit Players", key="wolf_edit"):
                 go("setup", round=rid)
         with col_b:
+            st.caption(f"Round: **{rid}**")
+        st.stop()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SCRAMBLE FORMAT
+    # ══════════════════════════════════════════════════════════════════════════
+    if rnd["format"] == "2-Man Scramble":
+        teams = get_teams(rid)
+        if not teams:
+            st.warning("No teams yet.")
+            if st.button("Go to Setup"):
+                go("setup", round=rid)
+            st.stop()
+
+        tab_score, tab_board, tab_card, tab_admin = st.tabs(
+            ["📝 Scores", "🏆 Leaderboard", "📋 Scorecard", "🔒 Admin"]
+        )
+        all_scores = get_scores(rid)
+        lkp = build_score_lookup(all_scores)
+
+        with tab_score:
+            if rnd["status"] == "completed":
+                st.warning("🏁 Round finalised — view results in Leaderboard and Scorecard tabs.")
+            else:
+                team_names = [t["team_name"] for t in teams]
+                last_key = f"sel_team_{rid}"
+                saved = st.session_state.get(last_key, team_names[0])
+                default_idx = team_names.index(saved) if saved in team_names else 0
+                sel_name = st.selectbox("Your Team", team_names, index=default_idx, key="team_sel_sc")
+                st.session_state[last_key] = sel_name
+                team = next(t for t in teams if t["team_name"] == sel_name)
+                tid = team["id"]
+
+                shcp = _scramble_course_hcp(team, course_data)
+                hcp1 = _player_course_hcp(team, 1, course_data)
+                hcp2 = _player_course_hcp(team, 2, course_data)
+                pars_sc = _par_for_tee(course_data, team["p1_tee"])
+                si_key_sc = _tee_info(course_data, team["p1_tee"])["si_key"]
+
+                st.info(f"🏌 Scramble hcp: **{shcp}** "
+                        f"(60% of {min(hcp1,hcp2)} + 40% of {max(hcp1,hcp2)})")
+
+                statuses_sc = ["done" if lkp.get((tid, 1, h)) is not None else "empty"
+                               for h in range(1, 19)]
+
+                st.markdown("**Hole progress** — 🟢 complete · ⚪ not started")
+                grid_html = '<div class="hole-grid">'
+                for h_i in range(1, 19):
+                    s = statuses_sc[h_i - 1]
+                    cls = "h-done" if s == "done" else "h-empty"
+                    ico = "✓" if s == "done" else str(h_i)
+                    grid_html += f'<div class="hole-btn {cls}">{ico}</div>'
+                grid_html += "</div>"
+                st.markdown(grid_html, unsafe_allow_html=True)
+                st.divider()
+
+                default_hole = next((h for h, s in enumerate(statuses_sc, 1) if s != "done"), 18)
+                h = st.select_slider("Select Hole", options=list(range(1, 19)),
+                                     value=default_hole, format_func=lambda x: f"Hole {x}")
+
+                par = pars_sc[h - 1]
+                si = course_data[si_key_sc][h - 1]
+                stk = strokes_on_hole(shcp, si)
+                existing_g = lkp.get((tid, 1, h))
+
+                st.markdown(f"## Hole {h}")
+                stroke_txt = (f' · <b style="color:#1a7a3c">-{stk} stroke{"s" if stk!=1 else ""}</b>'
+                              if stk > 0 else ' · no stroke')
+                st.markdown(f"**Par {par}** &nbsp;·&nbsp; SI {si}{stroke_txt}",
+                            unsafe_allow_html=True)
+
+                if existing_g is not None:
+                    st.success(f"✅ Hole {h} — score recorded")
+                else:
+                    st.info(f"⬜ Hole {h} — no score yet")
+
+                st.divider()
+                g = st.number_input("Team Gross Score", 1, 15,
+                                    value=int(existing_g) if existing_g else par,
+                                    key=f"sc_g_{h}", label_visibility="collapsed")
+                ns = net_score(g, shcp, si)
+                vs = ns - par
+                vs_str = f"+{vs}" if vs > 0 else ("E" if vs == 0 else str(vs))
+                st.info(f"Net: **{ns}** ({vs_str})")
+
+                if st.button("💾 Save Hole", type="primary", key=f"save_sc_{h}"):
+                    upsert_score(rid, tid, 1, h, g)
+                    st.success(f"Hole {h} saved!")
+                    st.rerun()
+
+        with tab_board:
+            st.subheader("🏆 Leaderboard")
+            lb_sc = compute_scramble_leaderboard(rid, course_data)
+            if lb_sc.empty:
+                st.info("No scores entered yet.")
+            else:
+                st.markdown(lb_sc.to_html(index=False, classes="lb-table", border=0),
+                            unsafe_allow_html=True)
+            if st.button("🔄 Refresh Now", key="sc_lb_refresh"):
+                st.rerun()
+
+        with tab_card:
+            st.subheader("📋 Full Scorecard")
+            sel_card = st.selectbox("Team", [t["team_name"] for t in teams], key="sc_card_sel")
+            card_team = next(t for t in teams if t["team_name"] == sel_card)
+            st.markdown(build_scramble_scorecard_html(rid, card_team, course_data),
+                        unsafe_allow_html=True)
+
+        with tab_admin:
+            st.subheader("🔒 Admin")
+            pw = st.text_input("Admin password", type="password", key="sc_admin_pw")
+            if pw == ADMIN_PASSWORD:
+                st.success("Authenticated ✓")
+                if rnd["status"] == "active":
+                    if st.button("🏁 Finalise Round", type="primary"):
+                        finalize_round(rid)
+                        st.success("Round finalised!")
+                        st.rerun()
+                else:
+                    st.info("Round already finalised.")
+                st.divider()
+                st.warning("Danger zone")
+                if st.button("🗑️ Delete This Round", type="secondary", key="sc_del"):
+                    delete_round(rid)
+                    st.query_params.clear()
+                    st.rerun()
+            elif pw:
+                st.error("Incorrect password.")
+
+        st.divider()
+        colA, colB = st.columns(2)
+        with colA:
+            if st.button("⚙️ Add Teams", key="sc_add_teams"):
+                go("setup", round=rid)
+        with colB:
             st.caption(f"Round: **{rid}**")
         st.stop()
 
