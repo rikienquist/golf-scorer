@@ -108,11 +108,11 @@ def _player_course_hcp(team: dict, player_num: int, course_data: dict) -> int:
 
 
 def _scramble_course_hcp(team: dict, course_data: dict) -> int:
-    """60% of the lower course hcp + 40% of the higher course hcp, rounded."""
+    """35% of the lower course hcp + 15% of the higher course hcp, rounded."""
     hcp1 = _player_course_hcp(team, 1, course_data)
     hcp2 = _player_course_hcp(team, 2, course_data)
     lo, hi = min(hcp1, hcp2), max(hcp1, hcp2)
-    return round(0.60 * lo + 0.40 * hi)
+    return round(0.35 * lo + 0.15 * hi)
 
 
 def _si_for_player(team: dict, player_num: int, course_data: dict, hole_idx: int) -> int:
@@ -1004,9 +1004,9 @@ elif page == "setup":
         chcp2 = course_handicap(p2_idx, ti2["slope"], ti2["rating"], par)
         if rnd["format"] == "2-Man Scramble":
             lo, hi = min(chcp1, chcp2), max(chcp1, chcp2)
-            shcp = round(0.60 * lo + 0.40 * hi)
+            shcp = round(0.35 * lo + 0.15 * hi)
             st.info(f"Scramble team handicap: **{shcp}** "
-                    f"(60% of {lo} + 40% of {hi})")
+                    f"(35% of {lo} + 15% of {hi})")
         else:
             st.info(f"Slope-adjusted course handicaps: **{p1_sel.split('(')[0].strip()} → {chcp1}** · "
                     f"**{p2_sel.split('(')[0].strip()} → {chcp2}**")
@@ -1327,7 +1327,7 @@ elif page == "score":
                 si_key_sc = _tee_info(course_data, team["p1_tee"])["si_key"]
 
                 st.info(f"🏌 Scramble hcp: **{shcp}** "
-                        f"(60% of {min(hcp1,hcp2)} + 40% of {max(hcp1,hcp2)})")
+                        f"(35% of {min(hcp1,hcp2)} + 15% of {max(hcp1,hcp2)})")
 
                 statuses_sc = ["done" if lkp.get((tid, 1, h)) is not None else "empty"
                                for h in range(1, 19)]
