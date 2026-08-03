@@ -7,7 +7,7 @@ PLAYERS = [
     ("Jake",    14),
     ("Kyle",    14),
     ("Ben",     18),
-    ("Jordan A.", 29),
+    ("Jordan A.", 19),
     ("Aidan",   21),
     ("Kenzie",  21),
     ("Ryan",    22),
