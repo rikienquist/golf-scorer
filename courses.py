@@ -15,7 +15,7 @@ PLAYERS = [
     ("Sean",    24),
     ("Connor",  24),
     ("Rhett",  24),
-    ("Jordan B.",   25),
+    ("Jordan B.",   27),
     ("Tyler",   27),
     ("Cameron",  30),
     ("Gemma",  34),  
