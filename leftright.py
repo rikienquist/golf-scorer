@@ -63,6 +63,10 @@ def compute_lr_standings(players: list, scores_lkp: dict, decisions: dict, cours
         ti = course_data["tees"].get(p["tee"], list(course_data["tees"].values())[0])
         course_hcps[p["id"]] = course_handicap(p["handicap"], ti["slope"], ti["rating"], par_total)
 
+    # Zero down to lowest handicap for hole competition (same as Wolf)
+    min_hcp  = min(course_hcps.values()) if course_hcps else 0
+    adj_hcps = {pid: course_hcps[pid] - min_hcp for pid in all_ids}
+
     cumulative = {pid: 0 for pid in all_ids}
     hole_pts   = {}
 
@@ -78,7 +82,7 @@ def compute_lr_standings(players: list, scores_lkp: dict, decisions: dict, cours
             p  = player_map[pid]
             ti = course_data["tees"].get(p["tee"], list(course_data["tees"].values())[0])
             si = course_data[ti["si_key"]][h - 1]
-            net_h[pid] = net_score(gross, course_hcps[pid], si) if gross is not None else None
+            net_h[pid] = net_score(gross, adj_hcps[pid], si) if gross is not None else None
 
         if len(left_ids) == 2 and len(right_ids) == 2:
             pts, _ = compute_hole_result(left_ids, right_ids, net_h)
