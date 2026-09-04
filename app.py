@@ -811,6 +811,8 @@ def build_lr_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
     all_ids   = [p["id"] for p in players]
     par_total = sum(pars)
     course_hcps = {p["id"]: _wolf_course_hcp(p, course_data) for p in players}
+    min_hcp_lr  = min(course_hcps.values()) if course_hcps else 0
+    adj_hcps_lr = {pid: course_hcps[pid] - min_hcp_lr for pid in course_hcps}
     player_map  = {p["id"]: p for p in players}
 
     def header_cells():
@@ -872,6 +874,7 @@ def build_lr_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
         par_key  = ti.get("par_key", "par")
         tee_pars = course_data.get(par_key, pars)
         hcp      = course_hcps[pid]
+        adj_hcp  = adj_hcps_lr[pid]
         tee_color = ti["color"]
 
         gross_cells = net_cells = pts_cells = ""
@@ -882,8 +885,8 @@ def build_lr_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
             gross = scores_lkp.get((pid, h))
             par_h = tee_pars[h - 1]
             si    = course_data[si_key][h - 1]
-            stk   = strokes_on_hole(hcp, si)
-            ns    = net_score(gross, hcp, si) if gross is not None else None
+            stk   = strokes_on_hole(adj_hcp, si)
+            ns    = net_score(gross, adj_hcp, si) if gross is not None else None
             pts_h = hole_pts.get(h, {}).get(pid, 0)
 
             dec_h    = decisions.get(h, {})
@@ -927,7 +930,7 @@ def build_lr_scorecard_html(players: list, scores_lkp: dict, decisions: dict,
         name_label = (f'{p["player_name"]} '
                       f'<span style="background:{tee_color};color:white;border-radius:3px;'
                       f'padding:0 4px;font-size:0.7rem">{p["tee"]}</span> '
-                      f'<span style="font-size:0.7rem;color:#666">hcp {hcp}</span>')
+                      f'<span style="font-size:0.7rem;color:#666">comp hcp {adj_hcp}</span>')
 
         player_rows_html += (
             f'<tr><td class="row-label">{name_label} Gross</td>{gross_cells}</tr>'
@@ -1713,13 +1716,15 @@ elif page == "score":
                 # ── Score entry ───────────────────────────────────────────────
                 st.subheader("Scores")
                 course_hcps_lr = {p["id"]: _wolf_course_hcp(p, course_data) for p in lr_players}
+                min_hcp_lr_e   = min(course_hcps_lr.values()) if course_hcps_lr else 0
+                adj_hcps_lr_e  = {pid: course_hcps_lr[pid] - min_hcp_lr_e for pid in course_hcps_lr}
                 gross_vals = {}
 
                 for p in lr_players:
                     pid  = p["id"]
                     ti   = _tee_info(course_data, p["tee"])
                     si   = course_data[ti["si_key"]][h - 1]
-                    stk  = strokes_on_hole(course_hcps_lr[pid], si)
+                    stk  = strokes_on_hole(adj_hcps_lr_e[pid], si)
                     existing_g = lr_scores.get((pid, h))
 
                     side = "⬅️ " if pid in left_ids else ("➡️ " if left_ids else "")
@@ -1733,7 +1738,7 @@ elif page == "score":
                             f'{side}<b>{p["player_name"]}</b> '
                             f'<span style="background:{tee_color};color:white;border-radius:3px;'
                             f'padding:0 5px;font-size:0.75rem">{p["tee"]}</span>'
-                            f' hcp <b>{course_hcps_lr[pid]}</b>{stroke_txt}',
+                            f' comp hcp <b>{adj_hcps_lr_e[pid]}</b>{stroke_txt}',
                             unsafe_allow_html=True
                         )
                     with cb:
@@ -1743,7 +1748,7 @@ elif page == "score":
                             g = st.number_input("Gross", 1, 15,
                                                 value=int(existing_g) if existing_g else par_h,
                                                 key=f"lr_g_{h}_{pid}", label_visibility="collapsed")
-                            ns = net_score(g, course_hcps_lr[pid], si)
+                            ns = net_score(g, adj_hcps_lr_e[pid], si)
                             st.caption(f"Net: **{ns}**")
                             gross_vals[pid] = g
                         else:
@@ -1758,7 +1763,7 @@ elif page == "score":
                         ti  = _tee_info(course_data, p["tee"])
                         si  = course_data[ti["si_key"]][h - 1]
                         g   = gross_vals.get(pid)
-                        net_now[pid] = net_score(g, course_hcps_lr[pid], si) if g is not None else None
+                        net_now[pid] = net_score(g, adj_hcps_lr_e[pid], si) if g is not None else None
 
                     _, result = compute_hole_result(left_ids, right_ids, net_now)
                     left_nets  = [net_now.get(pid) for pid in left_ids]
