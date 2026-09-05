@@ -27,6 +27,22 @@ PLAYERS = [
 # SI = Stroke Index (handicap hole order)
 
 COURSES = {
+    "Woodside Golf Course": {
+        "holes": 18,
+        # Hole 4 is par 4 (men) / par 5 (ladies) — using men's par here
+        "par":      [4, 4, 3, 4, 4, 4, 3, 4, 5,   4, 4, 3, 5, 3, 4, 4, 4, 4],
+        "par_ladies": [4, 4, 3, 5, 4, 4, 3, 4, 5, 4, 4, 3, 5, 3, 4, 4, 4, 4],
+        "si_mens":   [13, 1, 11, 3, 15, 7, 17, 9, 5,  16, 2, 14, 6, 18, 12, 10, 4, 8],
+        "si_ladies": [13, 3, 15, 7,  9, 5, 17,11, 1,  16, 6, 14, 2, 18, 12,  8, 4,10],
+        "tees": {
+            "Black":        {"color": "#222222", "text": "white", "slope": 122, "rating": 68.9, "si_key": "si_mens",   "par_key": "par"},
+            "Blue":         {"color": "#1a3a8a", "text": "white", "slope": 117, "rating": 67.3, "si_key": "si_mens",   "par_key": "par"},
+            "Blue|White":   {"color": "#4a6fa5", "text": "white", "slope": 114, "rating": 67.3, "si_key": "si_mens",   "par_key": "par"},
+            "White":        {"color": "#f0f0f0", "text": "black", "slope": 110, "rating": 64.8, "si_key": "si_mens",   "par_key": "par"},
+            "White|Silver": {"color": "#b0b0b0", "text": "white", "slope": 120, "rating": 67, "si_key": "si_ladies", "par_key": "par_ladies"},
+            "Silver":       {"color": "#888888", "text": "white", "slope": 110, "rating": 63.6, "si_key": "si_ladies", "par_key": "par_ladies"},
+        },
+    },
     "Applecreek Golf Course": {
         "holes": 18,
         "par":     [5, 3, 4, 5, 4, 3, 5, 4, 4,   4, 4, 5, 3, 4, 3, 4, 4, 4],
@@ -56,35 +72,6 @@ COURSES = {
             "Silver (L)":     {"color": "#888888", "text": "white", "slope": 128, "rating": 70.1, "si_key": "si_ladies", "par_key": "par"},
         },
     },
-    "Woodside Golf Course": {
-        "holes": 18,
-        # Hole 4 is par 4 (men) / par 5 (ladies) — using men's par here
-        "par":      [4, 4, 3, 4, 4, 4, 3, 4, 5,   4, 4, 3, 5, 3, 4, 4, 4, 4],
-        "par_ladies": [4, 4, 3, 5, 4, 4, 3, 4, 5, 4, 4, 3, 5, 3, 4, 4, 4, 4],
-        "si_mens":   [13, 1, 11, 3, 15, 7, 17, 9, 5,  16, 2, 14, 6, 18, 12, 10, 4, 8],
-        "si_ladies": [13, 3, 15, 7,  9, 5, 17,11, 1,  16, 6, 14, 2, 18, 12,  8, 4,10],
-        "tees": {
-            "Black":        {"color": "#222222", "text": "white", "slope": 122, "rating": 68.9, "si_key": "si_mens",   "par_key": "par"},
-            "Blue":         {"color": "#1a3a8a", "text": "white", "slope": 117, "rating": 67.3, "si_key": "si_mens",   "par_key": "par"},
-            "Blue|White":   {"color": "#4a6fa5", "text": "white", "slope": 114, "rating": 67.3, "si_key": "si_mens",   "par_key": "par"},
-            "White":        {"color": "#f0f0f0", "text": "black", "slope": 110, "rating": 64.8, "si_key": "si_mens",   "par_key": "par"},
-            "White|Silver": {"color": "#b0b0b0", "text": "white", "slope": 120, "rating": 67, "si_key": "si_ladies", "par_key": "par_ladies"},
-            "Silver":       {"color": "#888888", "text": "white", "slope": 110, "rating": 63.6, "si_key": "si_ladies", "par_key": "par_ladies"},
-        },
-    },
-    "Wingfield Golf Club": {
-        "holes": 18,
-        # Front 9: Runway  Back 9: Hawk's Nest
-        "par":     [4, 5, 4, 3, 4, 5, 4, 3, 4,   4, 5, 3, 4, 4, 5, 4, 3, 4],
-        "si_mens": [4, 8,10,14,16, 2,12,18, 6,   1,11, 9,15, 3, 5, 7,13,17],
-        "tees": {
-            "Gold":  {"color": "#c8a000", "text": "white", "slope": 137, "rating": 73.1, "si_key": "si_mens", "par_key": "par"},
-            "Black": {"color": "#222222", "text": "white", "slope": 126, "rating": 70.6, "si_key": "si_mens", "par_key": "par"},
-            "Blue":  {"color": "#1a3a8a", "text": "white", "slope": 121, "rating": 68.4, "si_key": "si_mens", "par_key": "par"},
-            "White": {"color": "#f0f0f0", "text": "black", "slope": 116, "rating": 66.2, "si_key": "si_mens", "par_key": "par"},
-            "Red":   {"color": "#c83020", "text": "white", "slope": 116, "rating": 67.6, "si_key": "si_mens", "par_key": "par"},
-        },
-    },
     "Springbank Links": {
         "holes": 18,
         "par": [4, 4, 5, 4, 3, 4, 4, 3, 5,   3, 4, 4, 4, 4, 4, 3, 5, 4],
@@ -99,7 +86,23 @@ COURSES = {
             "Gold":               {"color": "#c8a000", "text": "white", "slope": 119, "rating": 68.0, "si_key": "si_ladies", "par_key": "par"},
             "Red":                {"color": "#c83020", "text": "white", "slope": 111, "rating": 65.1, "si_key": "si_ladies", "par_key": "par"},
         },
-    }
+    },
+    "Carstairs Community Golf Club": {
+        "holes": 18,
+        "par":      [4, 3, 5, 4, 5, 3, 4, 3, 5,   4, 5, 3, 4, 3, 4, 4, 5, 4],
+        "si_mens":  [10, 6, 2,14,18,12, 4,16, 8,   5,11, 9, 1,17, 3,15,13, 7],
+        "si_ladies":[ 8,18, 6,12, 2,16,14,10, 4,   7, 3,15,11,17, 5,13, 1, 9],
+        "tees": {
+            "Black":       {"color": "#222222", "text": "white", "slope": 131, "rating": 71.0, "si_key": "si_mens",   "par_key": "par"},
+            "Black/Blue":  {"color": "#2a3a7a", "text": "white", "slope": 128, "rating": 70.1, "si_key": "si_mens",   "par_key": "par"},
+            "Blue":        {"color": "#1a3a8a", "text": "white", "slope": 126, "rating": 69.7, "si_key": "si_mens",   "par_key": "par"},
+            "Blue/White":  {"color": "#4a6fa5", "text": "white", "slope": 117, "rating": 66.9, "si_key": "si_mens",   "par_key": "par"},
+            "White":       {"color": "#f0f0f0", "text": "black", "slope": 115, "rating": 66.1, "si_key": "si_mens",   "par_key": "par"},
+            "White (L)":   {"color": "#f0f0f0", "text": "black", "slope": 133, "rating": 71.4, "si_key": "si_ladies", "par_key": "par"},
+            "White/Green": {"color": "#b0c8b0", "text": "black", "slope": 128, "rating": 69.7, "si_key": "si_ladies", "par_key": "par"},
+            "Green":       {"color": "#2d7a2d", "text": "white", "slope": 125, "rating": 64.2, "si_key": "si_ladies", "par_key": "par"},
+        },
+    },
 }
 
 FORMATS = ["2-Person Net Best Ball", "Wolf", "2-Man Scramble", "Left-Right"]
